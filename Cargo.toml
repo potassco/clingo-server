@@ -1,0 +1,9 @@
+[package]
+name = "cl-server"
+version = "0.1.0"
+authors = ["Sven Thiele <sthiele78@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rocket = "0.4.5"
+clingo = { version = "0.7.0-dev", features = ["derive"], git = "https://github.com/potassco/clingo-rs", branch = "propagator-tests" }
