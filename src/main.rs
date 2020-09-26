@@ -3,95 +3,106 @@
 #[macro_use]
 extern crate rocket;
 
-use clingo::*;
+mod solver;
+use clingo::{Part, SolveMode};
+use rocket::request::{self, FromRequest, Request};
 use rocket::response::Stream;
-use rocket::Data;
-use std::fs::File;
-use std::io::Write;
-use std::io::{prelude::*, BufReader, Error, ErrorKind};
+use rocket::{Data, State};
+use solver::{write_model, ClingoServerError, ModelStream, Solver};
+use std::io::Read;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// A type that represents a request's ID.
+struct RequestId(pub usize);
+/// Returns the current request's ID, assigning one only as necessary.
+impl<'a, 'r> FromRequest<'a, 'r> for &'a RequestId {
+    type Error = ();
+
+    fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+        // The closure passed to `local_cache` will be executed at most once per
+        // request: the first time the `RequestId` guard is used. If it is
+        // requested again, `local_cache` will return the same value.
+        request::Outcome::Success(
+            request.local_cache(|| RequestId(ID_COUNTER.fetch_add(1, Ordering::Relaxed))),
+        )
+    }
+}
 
 #[get("/")]
-fn index() -> &'static str {
-    "Hello, world! This is cl-server!"
+fn index(id: &RequestId) -> String {
+    format!("This is request #{}.", id.0)
 }
 
-#[post("/upload", format = "plain", data = "<data>")]
-fn upload(data: Data) -> Result<String, std::io::Error> {
-    data.stream_to_file("/tmp/upload.lp").map(|n| n.to_string())
+#[get("/create")]
+fn create(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
+    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
+    sh_ctl.create(vec![String::from("0")])?;
+    Ok("Created clingo Solver.".to_string())
 }
-
-fn write_model(model: &Model, mut out: impl Write) -> Result<(), std::io::Error> {
-    // retrieve the symbols in the model
-    let atoms = match model.symbols(ShowType::SHOWN) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(atoms) => atoms,
-    };
-
-    for atom in atoms {
-        // retrieve and write the symbol's string
-        let atom_string = match atom.to_string() {
-            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-            Ok(atom_string) => atom_string,
-        };
-
-        // println!("{}", atom_string);
-        writeln!(out, "{}", atom_string)?;
-    }
-    Ok(())
-}
-
-#[get("/retrieve")]
-fn retrieve() -> Result<Stream<File>, std::io::Error> {
-    let mut ctl = match Control::new(vec![]) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(ctl) => ctl,
-    };
-    let in_file = File::open("/tmp/upload.lp")?;
-    let mut reader = BufReader::new(in_file);
-
+#[post("/add", format = "plain", data = "<data>")]
+fn add(sh_ctl: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ClingoServerError> {
+    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
+    let mut ds = data.open();
     let mut buf = String::new();
-    while 0 < reader.read_line(&mut buf)? {}
-
-    match ctl.add("base", &[], &buf) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(()) => {}
-    }
+    ds.read_to_string(&mut buf)?;
+    sh_ctl.add("base", &[], &buf)?;
+    Ok("Added data to Solver.".to_string())
+}
+#[get("/ground")]
+fn ground(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
+    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
     // ground the base part
     let part = match Part::new("base", &[]) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
+        Err(_) => {
+            return Err(ClingoServerError::InternalError {
+                msg: "NulError while trying to create base Part",
+            })
+        }
         Ok(part) => part,
     };
     let parts = vec![part];
-    match ctl.ground(&parts) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(()) => {}
-    }
-
-    // solve
-    let mut handle = match ctl.solve(SolveMode::YIELD, &[]) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(handle) => handle,
-    };
-    // loop over all models
-    let mut out_file = File::create("/tmp/answer.json")?;
-    loop {
-        match handle.resume() {
-            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-            Ok(()) => {}
+    sh_ctl.ground(&parts)?;
+    Ok("Grounding.".to_string())
+}
+#[get("/solve")]
+fn solve(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
+    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
+    sh_ctl.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
+    Ok("Solver solving.".to_string())
+}
+#[get("/model")]
+fn model(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<Stream<ModelStream>, ClingoServerError> {
+    let mut sh_ctl = sh_ctl.lock().unwrap();
+    let mut buf = vec![];
+    match sh_ctl.model() {
+        // write the model
+        Ok(Some(model)) => {
+            write_model(model, &mut buf)?;
+            sh_ctl.resume().unwrap();
+            Ok(Stream::from(ModelStream { buf }))
         }
-        match handle.model() {
-            // print the model
-            Ok(Some(model)) => write_model(model, &mut out_file)?,
-            // stop if there are no more models
-            Ok(None) => break,
-            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        }
+        // stop if there are no more models
+        Ok(None) => Ok(Stream::from(ModelStream { buf })),
+        Err(e) => Err(e),
     }
-    File::open("/tmp/answer.json").map(Stream::from)
+}
+#[get("/close")]
+fn close(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
+    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
+    sh_ctl.close()?;
+    Ok("Solve handle closed.".to_string())
 }
 
 fn main() {
+    let ctl: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
     rocket::ignite()
-        .mount("/", routes![index, upload, retrieve])
+        .manage(ctl)
+        .mount(
+            "/",
+            routes![index, create, add, ground, solve, model, close],
+        )
         .launch();
 }
