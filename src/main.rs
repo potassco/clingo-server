@@ -3,33 +3,13 @@
 #[macro_use]
 extern crate rocket;
 
-mod solver;
+mod utils;
 use clingo::{Part, SolveMode};
-use rocket::request::{self, FromRequest, Request};
 use rocket::response::Stream;
 use rocket::{Data, State};
-use solver::{write_model, ClingoServerError, ModelStream, Solver};
 use std::io::Read;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
-
-static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-/// A type that represents a request's ID.
-struct RequestId(pub usize);
-/// Returns the current request's ID, assigning one only as necessary.
-impl<'a, 'r> FromRequest<'a, 'r> for &'a RequestId {
-    type Error = ();
-
-    fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
-        // The closure passed to `local_cache` will be executed at most once per
-        // request: the first time the `RequestId` guard is used. If it is
-        // requested again, `local_cache` will return the same value.
-        request::Outcome::Success(
-            request.local_cache(|| RequestId(ID_COUNTER.fetch_add(1, Ordering::Relaxed))),
-        )
-    }
-}
+use std::sync::{Arc, Mutex};
+use utils::{write_model, ModelStream, RequestId, ServerError, Solver};
 
 #[get("/")]
 fn index(id: &RequestId) -> String {
@@ -37,51 +17,51 @@ fn index(id: &RequestId) -> String {
 }
 
 #[get("/create")]
-fn create(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
-    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
-    sh_ctl.create(vec![String::from("0")])?;
+fn create(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.create(vec![String::from("0")])?;
     Ok("Created clingo Solver.".to_string())
 }
 #[post("/add", format = "plain", data = "<data>")]
-fn add(sh_ctl: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ClingoServerError> {
-    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
+fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
     let mut ds = data.open();
     let mut buf = String::new();
     ds.read_to_string(&mut buf)?;
-    sh_ctl.add("base", &[], &buf)?;
+    solver.add("base", &[], &buf)?;
     Ok("Added data to Solver.".to_string())
 }
 #[get("/ground")]
-fn ground(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
-    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
+fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
     // ground the base part
     let part = match Part::new("base", &[]) {
         Err(_) => {
-            return Err(ClingoServerError::InternalError {
+            return Err(ServerError::InternalError {
                 msg: "NulError while trying to create base Part",
             })
         }
         Ok(part) => part,
     };
     let parts = vec![part];
-    sh_ctl.ground(&parts)?;
+    solver.ground(&parts)?;
     Ok("Grounding.".to_string())
 }
 #[get("/solve")]
-fn solve(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
-    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
-    sh_ctl.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
+fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
     Ok("Solver solving.".to_string())
 }
 #[get("/model")]
-fn model(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<Stream<ModelStream>, ClingoServerError> {
-    let mut sh_ctl = sh_ctl.lock().unwrap();
+fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Stream<ModelStream>, ServerError> {
+    let mut solver = state.lock().unwrap();
     let mut buf = vec![];
-    match sh_ctl.model() {
+    match solver.model() {
         // write the model
         Ok(Some(model)) => {
             write_model(model, &mut buf)?;
-            sh_ctl.resume().unwrap();
+            solver.resume().unwrap();
             Ok(Stream::from(ModelStream { buf }))
         }
         // stop if there are no more models
@@ -90,16 +70,16 @@ fn model(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<Stream<ModelStream>, Cling
     }
 }
 #[get("/close")]
-fn close(sh_ctl: State<Arc<Mutex<Solver>>>) -> Result<String, ClingoServerError> {
-    let mut sh_ctl: MutexGuard<Solver> = sh_ctl.lock().unwrap();
-    sh_ctl.close()?;
+fn close(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.close()?;
     Ok("Solve handle closed.".to_string())
 }
 
 fn main() {
-    let ctl: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
+    let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
     rocket::ignite()
-        .manage(ctl)
+        .manage(state)
         .mount(
             "/",
             routes![index, create, add, ground, solve, model, close],
