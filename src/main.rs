@@ -5,11 +5,10 @@ extern crate rocket;
 
 mod utils;
 use clingo::{Part, SolveMode};
-use rocket::response::Stream;
 use rocket::{Data, State};
 use std::io::Read;
 use std::sync::{Arc, Mutex};
-use utils::{write_model, ModelStream, RequestId, ServerError, Solver};
+use utils::{write_model, RequestId, ServerError, Solver};
 
 #[get("/")]
 fn index(id: &RequestId) -> String {
@@ -54,20 +53,25 @@ fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     Ok("Solver solving.".to_string())
 }
 #[get("/model")]
-fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Stream<ModelStream>, ServerError> {
+fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Option<Vec<u8>>, ServerError> {
     let mut solver = state.lock().unwrap();
     let mut buf = vec![];
     match solver.model() {
         // write the model
         Ok(Some(model)) => {
             write_model(model, &mut buf)?;
-            solver.resume().unwrap();
-            Ok(Stream::from(ModelStream { buf }))
+            Ok(Some(buf))
         }
-        // stop if there are no more models
-        Ok(None) => Ok(Stream::from(ModelStream { buf })),
+        // 404 if there are no more models
+        Ok(None) => Ok(None),
         Err(e) => Err(e),
     }
+}
+#[get("/resume")]
+fn resume(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.resume()?;
+    Ok("Search is resumed.".to_string())
 }
 #[get("/close")]
 fn close(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
@@ -82,7 +86,7 @@ fn main() {
         .manage(state)
         .mount(
             "/",
-            routes![index, create, add, ground, solve, model, close],
+            routes![index, create, add, ground, solve, model, resume, close],
         )
         .launch();
 }

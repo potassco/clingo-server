@@ -19,7 +19,6 @@ pub enum Solver {
     SolveHandle(Option<SolveHandle>),
 }
 unsafe impl Send for Solver {}
-// unsafe impl Sync for Solver {}
 impl Solver {
     pub fn create(&mut self, arguments: std::vec::Vec<String>) -> Result<(), ServerError> {
         match self {
