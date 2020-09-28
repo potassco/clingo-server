@@ -1,48 +1,63 @@
+import argparse
+import sys
+import traceback
+
 import requests
 
-response = requests.get('http://localhost:8000/')
-data = response.text
-print(data)
 
-response = requests.get('http://localhost:8000/create')
-data = response.text
-print(data)
+def main():
+    try:
+        parser = argparse.ArgumentParser(
+            description="Test the clingo server")
+        parser.add_argument('-i', '--input',
+                            help='logic program', required=True)
+        args = parser.parse_args()
 
-with open('queens.lp', 'rb') as f:
-    response = requests.post("http://localhost:8000/add", data=f.read(),
-                             headers={
-        "X-RapidAPI-Host": "NasaAPIdimasV1.p.rapidapi.com",
-        "X-RapidAPI-Key": "4xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        "Content-Type": "text/plain; charset=utf-8 "
-    }
-    )
-    data = response.text
-    print(data)
+        response = requests.get('http://localhost:8000/')
+        data = response.text
+        print(data)
 
-response = requests.get('http://localhost:8000/ground')
-data = response.text
-print(data)
-response = requests.get('http://localhost:8000/solve')
-data = response.text
-print(data)
+        response = requests.get('http://localhost:8000/create')
+        if response.status_code == 500:
+            print("Solver already running ...")
+            print("Shutting down old solver ...")
+            response = requests.get('http://localhost:8000/close')
+            response = requests.get('http://localhost:8000/create')
+            print(response.text)
 
-print("Model1:")
-response = requests.get('http://localhost:8000/model')
-print(response.text)
-print("Model2:")
-response = requests.get('http://localhost:8000/model')
-print(response.text)
-print("Model3:")
-response = requests.get('http://localhost:8000/model')
-print(response.text)
-print("Model4:")
-response = requests.get('http://localhost:8000/model')
-print(response.text)
-print("Model5:")
-response = requests.get('http://localhost:8000/model')
-print(response.text)
-print("Model6:")
-response = requests.get('http://localhost:8000/model')
-print(response.text)
-response = requests.get('http://localhost:8000/close')
-print(response.text)
+        with open(args.input, 'rb') as f:
+            response = requests.post("http://localhost:8000/add", data=f.read(),
+                                     headers={
+                                         "Content-Type": "text/plain; charset=utf-8 "}
+                                     )
+            data = response.text
+            print(data)
+
+        response = requests.get('http://localhost:8000/ground')
+        data = response.text
+        print(data)
+        response = requests.get('http://localhost:8000/solve')
+        data = response.text
+        print(data)
+
+        count = 0
+        while True:
+            response = requests.get('http://localhost:8000/model')
+            if response.status_code == 404:
+                break
+            count += 1
+            print("Model", count, ':')
+            print(response.text)
+            response = requests.get('http://localhost:8000/resume')
+            print(response.text)
+
+        response = requests.get('http://localhost:8000/close')
+        print(response.text)
+    except Exception as e:
+        print(e)
+        traceback.print_exception(*sys.exc_info())
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
