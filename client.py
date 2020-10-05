@@ -1,7 +1,7 @@
 import argparse
 import sys
+import time
 import traceback
-
 import requests
 
 
@@ -42,14 +42,19 @@ def main():
 
         count = 0
         while True:
-            response = requests.get('http://localhost:8000/model')
+            response = requests.get(
+                'http://localhost:8000/model', timeout=1)
             if response.status_code == 404:
                 break
-            count += 1
-            print("Model", count, ':')
-            print(response.text)
-            response = requests.get('http://localhost:8000/resume')
-            print(response.text)
+            elif response.status_code == 500:
+                print("No model yet ... waiting 10 seconds.")
+                time.sleep(10)
+            else:
+                count += 1
+                print("Model", count, ':')
+                print(response.text)
+                response = requests.get('http://localhost:8000/resume')
+                print(response.text)
 
         response = requests.get('http://localhost:8000/close')
         print(response.text)

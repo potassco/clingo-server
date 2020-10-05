@@ -109,7 +109,15 @@ impl Solver {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::model failed! No SolveHandle.",
                 }),
-                Some(handle) => Ok(handle.model()?),
+                Some(handle) => {
+                    if handle.wait(0.0) {
+                        Ok(handle.model()?)
+                    } else {
+                        Err(ServerError::InternalError {
+                            msg: "Still solving. No Solution yet.",
+                        })
+                    }
+                }
             },
         }
     }
@@ -148,8 +156,8 @@ pub fn write_model(model: &Model, mut out: impl io::Write) -> Result<(), io::Err
     }
     Ok(())
 }
-pub struct ModelStream {
-    pub buf: Vec<u8>,
+struct ModelStream {
+    buf: Vec<u8>,
 }
 impl Read for ModelStream {
     #[inline]
