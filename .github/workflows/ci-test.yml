@@ -30,3 +30,4 @@ jobs:
         run: cargo +nightly test --verbose
         env:
           CLINGO_LIBRARY_PATH: /usr/share/miniconda/envs/test/lib
+          LD_LIBRARY_PATH: /usr/share/miniconda/envs/test/lib
