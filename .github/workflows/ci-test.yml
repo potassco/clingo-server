@@ -24,5 +24,7 @@ jobs:
         run: rustup toolchain install nightly
       - name: Build
         run: cargo +nightly build --verbose
+        env:
+          CLINGO_LIBRARY_PATH: /usr/share/miniconda/envs/test/lib
       - name: Run tests
         run: cargo +nightly test --verbose
