@@ -2,96 +2,87 @@
 
 #[macro_use]
 extern crate rocket;
+#[macro_use]
+extern crate serde_derive;
 
-use clingo::*;
-use rocket::response::Stream;
-use rocket::Data;
-use std::fs::File;
-use std::io::Write;
-use std::io::{prelude::*, BufReader, Error, ErrorKind};
+mod utils;
+use clingo::{Part, SolveMode};
+use rocket::{Data, State};
+use rocket_contrib::json::Json;
+use std::io::Read;
+use std::sync::{Arc, Mutex};
+use utils::{ModelResult, RequestId, ServerError, Solver};
 
 #[get("/")]
-fn index() -> &'static str {
-    "Hello, world! This is cl-server!"
+fn index(id: &RequestId) -> String {
+    format!("This is request #{}.", id.0)
 }
 
-#[post("/upload", format = "plain", data = "<data>")]
-fn upload(data: Data) -> Result<String, std::io::Error> {
-    data.stream_to_file("/tmp/upload.lp").map(|n| n.to_string())
+#[get("/create")]
+fn create(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.create(vec![String::from("0")])?;
+    Ok("Created clingo Solver.".to_string())
 }
-
-fn write_model(model: &Model, mut out: impl Write) -> Result<(), std::io::Error> {
-    // retrieve the symbols in the model
-    let atoms = match model.symbols(ShowType::SHOWN) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(atoms) => atoms,
-    };
-
-    for atom in atoms {
-        // retrieve and write the symbol's string
-        let atom_string = match atom.to_string() {
-            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-            Ok(atom_string) => atom_string,
-        };
-
-        // println!("{}", atom_string);
-        writeln!(out, "{}", atom_string)?;
-    }
-    Ok(())
-}
-
-#[get("/retrieve")]
-fn retrieve() -> Result<Stream<File>, std::io::Error> {
-    let mut ctl = match Control::new(vec![]) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(ctl) => ctl,
-    };
-    let in_file = File::open("/tmp/upload.lp")?;
-    let mut reader = BufReader::new(in_file);
-
+#[post("/add", format = "plain", data = "<data>")]
+fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    let mut ds = data.open();
     let mut buf = String::new();
-    while 0 < reader.read_line(&mut buf)? {}
-
-    match ctl.add("base", &[], &buf) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(()) => {}
-    }
+    ds.read_to_string(&mut buf)?;
+    solver.add("base", &[], &buf)?;
+    Ok("Added data to Solver.".to_string())
+}
+#[get("/ground")]
+fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
     // ground the base part
     let part = match Part::new("base", &[]) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
+        Err(_) => {
+            return Err(ServerError::InternalError {
+                msg: "NulError while trying to create base Part",
+            })
+        }
         Ok(part) => part,
     };
     let parts = vec![part];
-    match ctl.ground(&parts) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(()) => {}
+    solver.ground(&parts)?;
+    Ok("Grounding.".to_string())
+}
+#[get("/solve")]
+fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
+    Ok("Solver solving.".to_string())
+}
+#[get("/model")]
+fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Json<ModelResult>, ServerError> {
+    let mut solver = state.lock().unwrap();
+    match solver.model() {
+        Ok(mr) => Ok(Json(mr)),
+        Err(e) => Err(e),
     }
-
-    // solve
-    let mut handle = match ctl.solve(SolveMode::YIELD, &[]) {
-        Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        Ok(handle) => handle,
-    };
-    // loop over all models
-    let mut out_file = File::create("/tmp/answer.json")?;
-    loop {
-        match handle.resume() {
-            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-            Ok(()) => {}
-        }
-        match handle.model() {
-            // print the model
-            Ok(Some(model)) => write_model(model, &mut out_file)?,
-            // stop if there are no more models
-            Ok(None) => break,
-            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
-        }
-    }
-    File::open("/tmp/answer.json").map(Stream::from)
+}
+#[get("/resume")]
+fn resume(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.resume()?;
+    Ok("Search is resumed.".to_string())
+}
+#[get("/close")]
+fn close(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.close()?;
+    Ok("Solve handle closed.".to_string())
 }
 
 fn main() {
+    let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
     rocket::ignite()
-        .mount("/", routes![index, upload, retrieve])
+        .manage(state)
+        .mount(
+            "/",
+            routes![index, create, add, ground, solve, model, resume, close],
+        )
         .launch();
 }
