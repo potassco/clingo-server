@@ -12,7 +12,6 @@ jobs:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
       - name: Conda install clingo
-        shell: bash -l {0}
         run: |
           conda install -c potassco/label/dev clingo
           which clingo
@@ -36,7 +35,6 @@ jobs:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
       - name: Conda install clingo
-        shell: bash -l {0}
         run: |
           conda install -c potassco/label/dev clingo
           which clingo
