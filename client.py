@@ -44,17 +44,27 @@ def main():
         while True:
             response = requests.get(
                 'http://localhost:8000/model', timeout=1)
-            if response.status_code == 404:
-                break
-            elif response.status_code == 500:
-                print("No model yet ... waiting 10 seconds.")
-                time.sleep(10)
+
+            if response.status_code == 200:
+                json_response = response.json()
+
+                if json_response == 'Running':
+                    print("No model yet ... waiting 10 seconds.")
+                    time.sleep(10)
+                elif json_response == 'Done':
+                    print("Search finished, no more models.")
+                    break
+                else:
+                    model = json_response['Model']
+                    count += 1
+                    print("Model", count, ':')
+                    print(model)
+                    response = requests.get('http://localhost:8000/resume')
+                    print(response.text)
             else:
-                count += 1
-                print("Model", count, ':')
+                print("ServerError")
                 print(response.text)
-                response = requests.get('http://localhost:8000/resume')
-                print(response.text)
+                break
 
         response = requests.get('http://localhost:8000/close')
         print(response.text)

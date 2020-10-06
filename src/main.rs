@@ -2,13 +2,16 @@
 
 #[macro_use]
 extern crate rocket;
+#[macro_use]
+extern crate serde_derive;
 
 mod utils;
 use clingo::{Part, SolveMode};
 use rocket::{Data, State};
+use rocket_contrib::json::Json;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
-use utils::{write_model, RequestId, ServerError, Solver};
+use utils::{ModelResult, RequestId, ServerError, Solver};
 
 #[get("/")]
 fn index(id: &RequestId) -> String {
@@ -53,17 +56,10 @@ fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     Ok("Solver solving.".to_string())
 }
 #[get("/model")]
-fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Option<Vec<u8>>, ServerError> {
+fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Json<ModelResult>, ServerError> {
     let mut solver = state.lock().unwrap();
-    let mut buf = vec![];
     match solver.model() {
-        // write the model
-        Ok(Some(model)) => {
-            write_model(model, &mut buf)?;
-            Ok(Some(buf))
-        }
-        // 404 if there are no more models
-        Ok(None) => Ok(None),
+        Ok(mr) => Ok(Json(mr)),
         Err(e) => Err(e),
     }
 }

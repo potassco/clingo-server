@@ -1,4 +1,5 @@
 use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
+use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cmp;
 use std::io;
 use std::io::Read;
@@ -12,6 +13,35 @@ pub enum ServerError {
     IOError(#[from] io::Error),
     #[error("InternalError: {msg}")]
     InternalError { msg: &'static str },
+}
+impl Serialize for ServerError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("ServerError", 2)?;
+        match self {
+            ServerError::ClingoError(c) => {
+                s.serialize_field("type", "ClingoError")?;
+                s.serialize_field("msg", "")?;
+            }
+            ServerError::IOError(c) => {
+                s.serialize_field("type", "IoError")?;
+                s.serialize_field("msg", "")?;
+            }
+            ServerError::InternalError { msg } => {
+                s.serialize_field("type", "InternalError")?;
+                s.serialize_field("msg", *msg)?;
+            }
+        };
+        s.end()
+    }
+}
+#[derive(Debug, Serialize)]
+pub enum ModelResult {
+    Running,
+    Model(Vec<u8>),
+    Done,
 }
 
 pub enum Solver {
@@ -100,7 +130,7 @@ impl Solver {
             },
         }
     }
-    pub fn model(&mut self) -> Result<Option<&Model>, ServerError> {
+    pub fn model(&mut self) -> Result<ModelResult, ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
                 msg: "Solver::model failed! Solving has not yet started.",
@@ -111,11 +141,22 @@ impl Solver {
                 }),
                 Some(handle) => {
                     if handle.wait(0.0) {
-                        Ok(handle.model()?)
+                        match handle.model() {
+                            Ok(Some(model)) => {
+                                let mut buf = vec![];
+                                write_model(model, &mut buf)?;
+                                Ok(ModelResult::Model(buf))
+                            }
+                            Ok(None) => Ok(ModelResult::Done),
+                            Err(e) => {
+                                println!("{}", e);
+                                Err(ServerError::InternalError {
+                                    msg: "Solver::model failed! ClingoError.",
+                                })
+                            }
+                        }
                     } else {
-                        Err(ServerError::InternalError {
-                            msg: "Still solving. No Solution yet.",
-                        })
+                        Ok(ModelResult::Running)
                     }
                 }
             },
