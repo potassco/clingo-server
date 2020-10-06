@@ -17,9 +17,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Conda install clingo
         shell: bash -l {0}
-        run: conda install -c potassco/label/dev clingo
-      - name: test
-        run: which clingo
+        run: |
+          conda install -c potassco/label/dev clingo
+          which clingo
       - name: Install Nightly
         run: rustup toolchain install nightly
       - name: Build
