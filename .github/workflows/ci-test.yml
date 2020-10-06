@@ -18,6 +18,8 @@ jobs:
       - name: Conda install clingo
         shell: bash -l {0}
         run: conda install -c potassco/label/dev clingo
+      - name: test
+        run: which clingo
       - name: Install Nightly
         run: rustup toolchain install nightly
       - name: Build
