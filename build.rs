@@ -1,36 +1,58 @@
 use bindgen::builder;
-// use std::env;
-// use std::path::PathBuf;
-// use std::process::Command;
+use std::env;
+use std::path::PathBuf;
+use std::process::Command;
 fn main() {
 
-    // let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR was not set"));
-    // let clingo_dl_dir = out_dir.join("clingo-dl");
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR was not set"));
+    let clingo_dl_dir = out_dir.join("clingo-dl");
 
-    // if !clingo_dl_dir.exists() {
-    //     Command::new("git")
-    //         .args(&["clone", "https://github.com/potassco/clingo-dl.git"])
-    //         .current_dir(out_dir.to_str().unwrap())
-    //         .status()
-    //         .unwrap();
+    if !clingo_dl_dir.exists() {
+        Command::new("git")
+            .args(&["clone", "https://github.com/potassco/clingo-dl.git"])
+            .current_dir(out_dir.to_str().unwrap())
+            .status()
+            .unwrap();
 
-    //     Command::new("git")
-    //         .args(&["checkout", "wip"])
-    //         .current_dir(clingo_dl_dir.to_str().unwrap())
-    //         .status()
-    //         .unwrap();
+        Command::new("git")
+            .args(&["checkout", "wip"])
+            .current_dir(clingo_dl_dir.to_str().unwrap())
+            .status()
+            .unwrap();
 
-    //     Command::new("git")
-    //         .args(&["submodule", "update", "--init", "--recursive"])
-    //         .current_dir(clingo_dl_dir.to_str().unwrap())
-    //         .status()
-    //         .unwrap();
-    // }
+        Command::new("git")
+            .args(&["submodule", "update", "--init", "--recursive"])
+            .current_dir(clingo_dl_dir.to_str().unwrap())
+            .status()
+            .unwrap();
+    }
+
+    let clingo_dir = out_dir.join("clingo");
+
+    if !clingo_dir.exists() {
+        Command::new("git")
+            .args(&["clone", "https://github.com/potassco/clingo.git"])
+            .current_dir(out_dir.to_str().unwrap())
+            .status()
+            .unwrap();
+
+        Command::new("git")
+            .args(&["checkout", "wip"])
+            .current_dir(clingo_dir.to_str().unwrap())
+            .status()
+            .unwrap();
+
+        Command::new("git")
+            .args(&["submodule", "update", "--init", "--recursive"])
+            .current_dir(clingo_dir.to_str().unwrap())
+            .status()
+            .unwrap();
+    }
+
     // Configure and generate bindings.
     let bindings = builder()
-        .header("./clingo-dl.h")
-        // TODO: use clingo-dl.h from the clingo-dl repo
-        // .header(clingo_dl_dir.join("libclingo-dl/clingo-dl.h").to_str().unwrap())
+        .clang_arg(format!("-I{}",clingo_dir.join("libclingo").to_str().unwrap()))
+        .header(clingo_dl_dir.join("libclingo-dl/clingo-dl.h").to_str().unwrap())
         .whitelist_type("clingodl_theory_t")
         .whitelist_function("clingodl_create")
         .whitelist_function("clingodl_destroy")

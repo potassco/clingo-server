@@ -126,8 +126,22 @@ pub struct clingo_model {
 }
 #[doc = "! Object representing a model."]
 pub type clingo_model_t = clingo_model;
+#[doc = "! Corresponding type to ::clingo_ast_comparison_operator."]
 pub type clingo_ast_comparison_operator_t = ::std::os::raw::c_int;
+#[doc = "! Corresponding type to ::clingo_ast_sign_t."]
 pub type clingo_ast_sign_t = ::std::os::raw::c_int;
+#[doc = "! Corresponding type to ::clingo_ast_unary_operator."]
+pub type clingo_ast_unary_operator_t = ::std::os::raw::c_int;
+#[doc = "! Corresponding type to ::clingo_ast_binary_operator."]
+pub type clingo_ast_binary_operator_t = ::std::os::raw::c_int;
+#[doc = "! Corresponding type to ::clingo_ast_aggregate_function."]
+pub type clingo_ast_aggregate_function_t = ::std::os::raw::c_int;
+#[doc = "! Corresponding type to ::clingo_ast_theory_operator_type."]
+pub type clingo_ast_theory_operator_type_t = ::std::os::raw::c_int;
+#[doc = "! Corresponding type to ::clingo_ast_theory_atom_definition_type."]
+pub type clingo_ast_theory_atom_definition_type_t = ::std::os::raw::c_int;
+#[doc = "! Corresponding type to ::clingo_ast_script_type."]
+pub type clingo_ast_script_type_t = ::std::os::raw::c_int;
 pub type clingo_ast_term_type_t = ::std::os::raw::c_int;
 pub type clingo_ast_unary_operation_t = clingo_ast_unary_operation;
 pub type clingo_ast_binary_operation_t = clingo_ast_binary_operation;
@@ -300,7 +314,6 @@ fn bindgen_test_layout_clingo_ast_term() {
     );
 }
 pub type clingo_ast_term_t = clingo_ast_term;
-pub type clingo_ast_unary_operator_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct clingo_ast_unary_operation {
@@ -345,7 +358,6 @@ fn bindgen_test_layout_clingo_ast_unary_operation() {
         )
     );
 }
-pub type clingo_ast_binary_operator_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct clingo_ast_binary_operation {
@@ -954,7 +966,6 @@ fn bindgen_test_layout_clingo_ast_literal() {
     );
 }
 pub type clingo_ast_literal_t = clingo_ast_literal;
-pub type clingo_ast_aggregate_function_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct clingo_ast_aggregate_guard {
@@ -2446,7 +2457,6 @@ fn bindgen_test_layout_clingo_ast_body_literal() {
     );
 }
 pub type clingo_ast_body_literal_t = clingo_ast_body_literal;
-pub type clingo_ast_theory_operator_type_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct clingo_ast_theory_operator_definition {
@@ -2663,7 +2673,6 @@ fn bindgen_test_layout_clingo_ast_theory_guard_definition() {
     );
 }
 pub type clingo_ast_theory_guard_definition_t = clingo_ast_theory_guard_definition;
-pub type clingo_ast_theory_atom_definition_type_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct clingo_ast_theory_atom_definition {
@@ -3169,7 +3178,6 @@ fn bindgen_test_layout_clingo_ast_minimize() {
     );
 }
 pub type clingo_ast_minimize_t = clingo_ast_minimize;
-pub type clingo_ast_script_type_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct clingo_ast_script {
