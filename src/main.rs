@@ -5,10 +5,8 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_derive;
 
-mod dl_theory;
 mod utils;
 use clingo::{Part, SolveMode};
-use dl_theory::load_clingo_dl;
 use rocket::{Data, State};
 use rocket_contrib::json::Json;
 use std::io::Read;
@@ -77,15 +75,31 @@ fn close(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     solver.close()?;
     Ok("Solve handle closed.".to_string())
 }
+#[get("/register_dl_theory")]
+fn register_dl_theory(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    solver.register_dl_theory()?;
+    Ok("Difference logic theory registered.".to_string())
+}
 
 fn main() {
-    load_clingo_dl();
+    // load_clingo_dl();
     let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
     rocket::ignite()
         .manage(state)
         .mount(
             "/",
-            routes![index, create, add, ground, solve, model, resume, close],
+            routes![
+                index,
+                create,
+                add,
+                ground,
+                solve,
+                model,
+                resume,
+                close,
+                register_dl_theory
+            ],
         )
         .launch();
 }

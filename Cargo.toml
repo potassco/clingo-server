@@ -4,11 +4,9 @@ version = "0.1.0"
 authors = ["Sven Thiele <sthiele78@gmail.com>"]
 edition = "2018"
 publish = false
-build = "build.rs"
 
 [dependencies]
-clingo = { version = "0.7.0-dev", git = "https://github.com/potassco/clingo-rs", branch = "theory-trait", features = ["dynamic_linking"] }
-# clingo = { version = "0.7.0-dev", features = ["dynamic_linking"], git = "https://github.com/potassco/clingo-rs", branch = "consume-ctl" }
+clingo = { version = "0.7.0-beta.1", git = "https://github.com/potassco/clingo-rs", branch = "theory-trait", features = ["dynamic_linking","dl_theory"] }
 rocket = "0.4.5"
 thiserror = "1.0"
 libloading = "0.6"

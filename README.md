@@ -1,5 +1,13 @@
 # clingo-server
 
+Set paths to clingo library libclingo.so and clingo-dl libclingo-dl.so
+
+```sh
+export CLINGO_LIBRARY_PATH=/scratch/miniconda3/envs/clingo/lib
+export CLINGO_DL_LIBRARY_PATH=/clingo-dl/lib
+export LD_LIBRARY_PATH=/scratch/miniconda3/envs/clingo/lib:/clingo-dl/lib
+```
+
 Start the server with
 
 ```sh

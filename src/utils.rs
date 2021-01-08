@@ -1,3 +1,5 @@
+use clingo::dl_theory::DLTheory;
+use clingo::theory::Theory;
 use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cmp;
@@ -103,15 +105,13 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::add failed! Solver has been already started.",
             }),
-            Solver::Control(ctl) => match ctl.as_mut() {
-                None => Err(ServerError::InternalError {
-                    msg: "Solver::add failed! No control object.",
-                }),
-                Some(ctl) => {
-                    ctl.add(name, parameters, program)?;
-                    Ok(())
-                }
-            },
+            Solver::Control(None) => Err(ServerError::InternalError {
+                msg: "Solver::add failed! No control object.",
+            }),
+            Solver::Control(Some(ctl)) => {
+                ctl.add(name, parameters, program)?;
+                Ok(())
+            }
         }
     }
     pub fn ground(&mut self, parts: &[Part]) -> Result<(), ServerError> {
@@ -119,15 +119,28 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::ground failed! Solver has been already started.",
             }),
-            Solver::Control(ctl) => match ctl.as_mut() {
-                None => Err(ServerError::InternalError {
-                    msg: "Solver::ground failed! No Control object.",
-                }),
-                Some(ctl) => {
-                    ctl.ground(parts)?;
-                    Ok(())
-                }
-            },
+            Solver::Control(None) => Err(ServerError::InternalError {
+                msg: "Solver::ground failed! No Control object.",
+            }),
+            Solver::Control(Some(ctl)) => {
+                ctl.ground(parts)?;
+                Ok(())
+            }
+        }
+    }
+    pub fn register_dl_theory(&mut self) -> Result<(), ServerError> {
+        match self {
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::load_dl_theory failed! Solver has been already started.",
+            }),
+            Solver::Control(None) => Err(ServerError::InternalError {
+                msg: "Solver::ground failed! No Control object.",
+            }),
+            Solver::Control(Some(ctl)) => {
+                let mut dl_theory = DLTheory::create();
+                dl_theory.register(ctl);
+                Ok(())
+            }
         }
     }
     pub fn model(&mut self) -> Result<ModelResult, ServerError> {

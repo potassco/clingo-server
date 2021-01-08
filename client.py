@@ -33,6 +33,10 @@ def main():
             data = response.text
             print(data)
 
+        response = requests.get('http://localhost:8000/register_dl_theory')
+        data = response.text
+        print(data)
+
         response = requests.get('http://localhost:8000/ground')
         data = response.text
         print(data)
