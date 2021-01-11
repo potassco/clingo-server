@@ -131,10 +131,10 @@ impl Solver {
     pub fn register_dl_theory(&mut self) -> Result<(), ServerError> {
         match self {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::load_dl_theory failed! Solver has been already started.",
+                msg: "Solver::register_dl_theory failed! Solver has been already started.",
             }),
             Solver::Control(None) => Err(ServerError::InternalError {
-                msg: "Solver::ground failed! No Control object.",
+                msg: "Solver::register_dl_theory failed! No Control object.",
             }),
             Solver::Control(Some(ctl)) => {
                 let mut dl_theory = DLTheory::create();
