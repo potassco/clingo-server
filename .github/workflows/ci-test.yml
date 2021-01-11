@@ -15,6 +15,9 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install -c potassco/label/dev clingo
+      - name: Conda install clingo-dl
+        shell: bash -l {0}
+        run: |
           conda install -c potassco/label/dev clingo-dl
       - name: Install Nightly
         run: rustup toolchain install nightly
@@ -40,6 +43,9 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install -c potassco/label/dev clingo
+      - name: Conda install clingo-dl
+        shell: bash -l {0}
+        run: |
           conda install -c potassco/label/dev clingo-dl
       - name: Install Nightly
         run: rustup toolchain install nightly
