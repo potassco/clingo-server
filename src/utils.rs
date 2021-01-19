@@ -1,5 +1,5 @@
-use clingo::{ast, dl_theory::DLTheory};
 use clingo::theory::Theory;
+use clingo::{ast, dl_theory::DLTheory};
 use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cmp;
@@ -48,8 +48,9 @@ pub enum ModelResult {
 
 pub enum Solver {
     Control(Option<Control>),
-    DLControl(Option<(Control,DLTheory)>),
+    DLControl(Option<(Control, DLTheory)>),
     SolveHandle(Option<SolveHandle>),
+    DLSolveHandle(Option<(SolveHandle, DLTheory)>),
 }
 unsafe impl Send for Solver {}
 impl Solver {
@@ -58,14 +59,18 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::create() failed! Solver still running!",
             }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::create() failed! Solver still running!",
+            }),
             Solver::Control(_) => {
                 *self = Solver::Control(Some(Control::new(arguments)?));
                 Ok(())
             }
             Solver::DLControl(_) => {
-                *self = Solver::DLControl(Some((Control::new(arguments)?,DLTheory::create())));
-                // TODO register theory
-                // dl_theory.register(ctl);
+                let mut ctl = Control::new(arguments)?;
+                let mut dl_theory = DLTheory::create();
+                dl_theory.register(&mut ctl);
+                *self = Solver::DLControl(Some((ctl, dl_theory)));
                 Ok(())
             }
         }
@@ -87,12 +92,24 @@ impl Solver {
                     Ok(())
                 }
             },
+            Solver::DLSolveHandle(handle) => match handle.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::close() failed! No DLSolveHandle.",
+                }),
+                Some((handle,dl_theory)) => {
+                    *self = Solver::DLControl(Some((handle.close()?,dl_theory)));
+                    Ok(())
+                }
+            },
         }
     }
     pub fn solve(&mut self, mode: SolveMode, assumptions: &[Literal]) -> Result<(), ServerError> {
         match self {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::solve() failed! Solving has already started.",
+            }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::solve() failed! DLSolving has already started.",
             }),
             Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
@@ -107,8 +124,9 @@ impl Solver {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::solve() failed! No Control object.",
                 }),
-                Some((ctl,_dl_theory)) => {
-                    *self = Solver::SolveHandle(Some(ctl.solve(mode, assumptions)?));
+                Some((ctl, mut dl_theory)) => {
+                    let mut on_model = DLModelHandler{theory:&mut dl_theory};
+                    *self = Solver::SolveHandle(Some(ctl.solve_with_event_handler(mode, assumptions, &mut on_model)?));
                     Ok(())
                 }
             },
@@ -124,6 +142,9 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::add failed! Solver has been already started.",
             }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::add failed! DLSolver has been already started.",
+            }),
             Solver::Control(None) => Err(ServerError::InternalError {
                 msg: "Solver::add failed! No control object.",
             }),
@@ -134,14 +155,14 @@ impl Solver {
                 ctl.add(name, parameters, program)?;
                 Ok(())
             }
-            Solver::DLControl(Some((ctl,dl_theory))) => {
+            Solver::DLControl(Some((ctl, dl_theory))) => {
                 let mut rewriter = Rewriter {
                     control: ctl,
                     theory: dl_theory,
                 };
                 // rewrite the program
-                clingo::parse_program("a :- not b. b :- not a.", &mut rewriter)
-                .expect("Failed to parse logic program.");
+                clingo::parse_program(program, &mut rewriter)
+                    .expect("Failed to parse logic program.");
                 Ok(())
             }
         }
@@ -150,6 +171,9 @@ impl Solver {
         match self {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::ground failed! Solver has been already started.",
+            }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::ground failed! DLSolver has been already started.",
             }),
             Solver::Control(None) => Err(ServerError::InternalError {
                 msg: "Solver::ground failed! No Control object.",
@@ -160,9 +184,10 @@ impl Solver {
             Solver::Control(Some(ctl)) => {
                 ctl.ground(parts)?;
                 Ok(())
-            },
-            Solver::DLControl(Some((ctl,_dl_theory))) => {
+            }
+            Solver::DLControl(Some((ctl, dl_theory))) => {
                 ctl.ground(parts)?;
+                dl_theory.prepare(ctl);
                 Ok(())
             }
         }
@@ -171,6 +196,9 @@ impl Solver {
         match self {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::register_dl_theory failed! Solver has been already started.",
+            }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::register_dl_theory failed! DLSolver has been already started.",
             }),
             Solver::DLControl(None) => Err(ServerError::InternalError {
                 msg: "Solver::register_dl_theory failed! No Control object.",
@@ -182,11 +210,11 @@ impl Solver {
                 Some(mut ctl) => {
                     let mut dl_theory = DLTheory::create();
                     dl_theory.register(&mut ctl);
-                    *self = Solver::DLControl(Some((ctl,dl_theory)));
+                    *self = Solver::DLControl(Some((ctl, dl_theory)));
                     Ok(())
                 }
             },
-            Solver::DLControl(Some(_)) =>Err(ServerError::InternalError {
+            Solver::DLControl(Some(_)) => Err(ServerError::InternalError {
                 msg: "Solver::register_dl_theory failed! DLTheory already registered.",
             }),
         }
@@ -224,6 +252,35 @@ impl Solver {
                     }
                 }
             },
+            Solver::DLSolveHandle(handle) => match handle.as_mut() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::model failed! No DLSolveHandle.",
+                }),
+                Some((handle,dl_theory)) => {
+                    if handle.wait(0.0) {
+                        match handle.model() {
+                            Ok(Some(model)) => {
+                                let mut buf = vec![];
+                                write_model(model, &mut buf)?;
+                                // TODO: write DL Assignment
+                                // let mut begin = 0;
+                                // dl_theory.assignment_begin(model.thread_id(),&mut begin);
+                                // sys.stdout.write(" {}={}".format(name, value))
+                                Ok(ModelResult::Model(buf))
+                            }
+                            Ok(None) => Ok(ModelResult::Done),
+                            Err(e) => {
+                                println!("{}", e);
+                                Err(ServerError::InternalError {
+                                    msg: "Solver::model failed! ClingoError.",
+                                })
+                            }
+                        }
+                    } else {
+                        Ok(ModelResult::Running)
+                    }
+                }
+            },
         }
     }
     pub fn resume(&mut self) -> Result<(), ServerError> {
@@ -239,6 +296,15 @@ impl Solver {
                     msg: "Solver::resume failed! No SolveHandle.",
                 }),
                 Some(handle) => {
+                    handle.resume()?;
+                    Ok(())
+                }
+            },
+            Solver::DLSolveHandle(handle) => match handle.as_mut() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::resume failed! No DLSolveHandle.",
+                }),
+                Some((handle,dl_theory)) => {
                     handle.resume()?;
                     Ok(())
                 }
@@ -311,14 +377,30 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a RequestId {
         )
     }
 }
-pub struct Rewriter<'a,'b> {
+pub struct Rewriter<'a, 'b> {
     control: &'a mut Control,
-    theory: &'b mut dyn Theory,
+    theory: &'b mut DLTheory,
 }
 
-impl<'a,'b> clingo::StatementHandler for Rewriter<'a,'b> {
+impl<'a, 'b> clingo::StatementHandler for Rewriter<'a, 'b> {
     fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-        let mut builder = ast::ProgramBuilder::from(self.control).unwrap();       
+        let mut builder = ast::ProgramBuilder::from(self.control).unwrap();
         self.theory.rewrite_statement(stm, &mut builder)
+    }
+}
+pub struct DLModelHandler<'a> {
+    theory: &'a mut DLTheory,
+}
+
+impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
+    fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
+        eprintln!("DLModelHandler::on_solve_event goon:{}",goon);
+        match event {
+            clingo::SolveEvent::Model(model) => {  
+                eprintln!("DLModelHandler::on_solve_event Model found");
+                self.theory.on_model(model)
+            },
+            _ => {true}
+        }
     }
 }
