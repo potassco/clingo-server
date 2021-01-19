@@ -64,7 +64,7 @@ def main():
                     model = json_response['Model']
                     count += 1
                     print("Model", count, ':')
-                    print(model)
+                    print(bytes(model).decode("utf-8") )
                     response = requests.get(server+'resume')
                     print(response.text)
             else:
