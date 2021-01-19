@@ -1,4 +1,4 @@
-use clingo::dl_theory::DLTheory;
+use clingo::{ast, dl_theory::DLTheory};
 use clingo::theory::Theory;
 use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
@@ -48,6 +48,7 @@ pub enum ModelResult {
 
 pub enum Solver {
     Control(Option<Control>),
+    DLControl(Option<(Control,DLTheory)>),
     SolveHandle(Option<SolveHandle>),
 }
 unsafe impl Send for Solver {}
@@ -61,11 +62,20 @@ impl Solver {
                 *self = Solver::Control(Some(Control::new(arguments)?));
                 Ok(())
             }
+            Solver::DLControl(_) => {
+                *self = Solver::DLControl(Some((Control::new(arguments)?,DLTheory::create())));
+                // TODO register theory
+                // dl_theory.register(ctl);
+                Ok(())
+            }
         }
     }
     pub fn close(&mut self) -> Result<(), ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
+                msg: "Solver::close() failed! Solving has not yet started.",
+            }),
+            Solver::DLControl(_) => Err(ServerError::InternalError {
                 msg: "Solver::close() failed! Solving has not yet started.",
             }),
             Solver::SolveHandle(handle) => match handle.take() {
@@ -93,6 +103,15 @@ impl Solver {
                     Ok(())
                 }
             },
+            Solver::DLControl(ctl) => match ctl.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::solve() failed! No Control object.",
+                }),
+                Some((ctl,_dl_theory)) => {
+                    *self = Solver::SolveHandle(Some(ctl.solve(mode, assumptions)?));
+                    Ok(())
+                }
+            },
         }
     }
     pub fn add(
@@ -108,8 +127,21 @@ impl Solver {
             Solver::Control(None) => Err(ServerError::InternalError {
                 msg: "Solver::add failed! No control object.",
             }),
+            Solver::DLControl(None) => Err(ServerError::InternalError {
+                msg: "Solver::add failed! No control object.",
+            }),
             Solver::Control(Some(ctl)) => {
                 ctl.add(name, parameters, program)?;
+                Ok(())
+            }
+            Solver::DLControl(Some((ctl,dl_theory))) => {
+                let mut rewriter = Rewriter {
+                    control: ctl,
+                    theory: dl_theory,
+                };
+                // rewrite the program
+                clingo::parse_program("a :- not b. b :- not a.", &mut rewriter)
+                .expect("Failed to parse logic program.");
                 Ok(())
             }
         }
@@ -122,7 +154,14 @@ impl Solver {
             Solver::Control(None) => Err(ServerError::InternalError {
                 msg: "Solver::ground failed! No Control object.",
             }),
+            Solver::DLControl(None) => Err(ServerError::InternalError {
+                msg: "Solver::ground failed! No Control object.",
+            }),
             Solver::Control(Some(ctl)) => {
+                ctl.ground(parts)?;
+                Ok(())
+            },
+            Solver::DLControl(Some((ctl,_dl_theory))) => {
                 ctl.ground(parts)?;
                 Ok(())
             }
@@ -133,19 +172,31 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::register_dl_theory failed! Solver has been already started.",
             }),
-            Solver::Control(None) => Err(ServerError::InternalError {
+            Solver::DLControl(None) => Err(ServerError::InternalError {
                 msg: "Solver::register_dl_theory failed! No Control object.",
             }),
-            Solver::Control(Some(ctl)) => {
-                let mut dl_theory = DLTheory::create();
-                dl_theory.register(ctl);
-                Ok(())
-            }
+            Solver::Control(ctl) => match ctl.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::register_dl_theory failed! No Control object.",
+                }),
+                Some(mut ctl) => {
+                    let mut dl_theory = DLTheory::create();
+                    dl_theory.register(&mut ctl);
+                    *self = Solver::DLControl(Some((ctl,dl_theory)));
+                    Ok(())
+                }
+            },
+            Solver::DLControl(Some(_)) =>Err(ServerError::InternalError {
+                msg: "Solver::register_dl_theory failed! DLTheory already registered.",
+            }),
         }
     }
     pub fn model(&mut self) -> Result<ModelResult, ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
+                msg: "Solver::model failed! Solving has not yet started.",
+            }),
+            Solver::DLControl(_) => Err(ServerError::InternalError {
                 msg: "Solver::model failed! Solving has not yet started.",
             }),
             Solver::SolveHandle(handle) => match handle.as_mut() {
@@ -178,6 +229,9 @@ impl Solver {
     pub fn resume(&mut self) -> Result<(), ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
+                msg: "Solver::resume failed! Solver has not yet started.",
+            }),
+            Solver::DLControl(_) => Err(ServerError::InternalError {
                 msg: "Solver::resume failed! Solver has not yet started.",
             }),
             Solver::SolveHandle(handle) => match handle.as_mut() {
@@ -255,5 +309,16 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a RequestId {
         request::Outcome::Success(
             request.local_cache(|| RequestId(ID_COUNTER.fetch_add(1, Ordering::Relaxed))),
         )
+    }
+}
+pub struct Rewriter<'a,'b> {
+    control: &'a mut Control,
+    theory: &'b mut dyn Theory,
+}
+
+impl<'a,'b> clingo::StatementHandler for Rewriter<'a,'b> {
+    fn on_statement(&mut self, stm: &ast::Statement) -> bool {
+        let mut builder = ast::ProgramBuilder::from(self.control).unwrap();       
+        self.theory.rewrite_statement(stm, &mut builder)
     }
 }
