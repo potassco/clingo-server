@@ -126,7 +126,7 @@ impl Solver {
                 }),
                 Some((ctl, mut dl_theory)) => {
                     let mut on_model = DLModelHandler{theory:&mut dl_theory};
-                    *self = Solver::SolveHandle(Some(ctl.solve_with_event_handler(mode, assumptions, &mut on_model)?));
+                    *self = Solver::DLSolveHandle(Some((ctl.solve_with_event_handler(mode, assumptions, &mut on_model)?,dl_theory)));
                     Ok(())
                 }
             },
@@ -262,9 +262,10 @@ impl Solver {
                             Ok(Some(model)) => {
                                 let mut buf = vec![];
                                 write_model(model, &mut buf)?;
-                                // TODO: write DL Assignment
-                                // let mut begin = 0;
-                                // dl_theory.assignment_begin(model.thread_id(),&mut begin);
+                                // TODO: write DL Assignment to stream
+                                for a in dl_theory.assignment_iter(model.thread_id().unwrap()) {
+                                    eprint!("a: {:?}",a)
+                                }
                                 // sys.stdout.write(" {}={}".format(name, value))
                                 Ok(ModelResult::Model(buf))
                             }
