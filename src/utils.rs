@@ -1,4 +1,4 @@
-use clingo::theory::Theory;
+use clingo::{dl_theory::DLTheoryAssignmentIterator, theory::Theory};
 use clingo::{ast, dl_theory::DLTheory};
 use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
@@ -96,8 +96,8 @@ impl Solver {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::close() failed! No DLSolveHandle.",
                 }),
-                Some((handle,dl_theory)) => {
-                    *self = Solver::DLControl(Some((handle.close()?,dl_theory)));
+                Some((handle, dl_theory)) => {
+                    *self = Solver::DLControl(Some((handle.close()?, dl_theory)));
                     Ok(())
                 }
             },
@@ -125,8 +125,13 @@ impl Solver {
                     msg: "Solver::solve() failed! No Control object.",
                 }),
                 Some((ctl, mut dl_theory)) => {
-                    let mut on_model = DLModelHandler{theory:&mut dl_theory};
-                    *self = Solver::DLSolveHandle(Some((ctl.solve_with_event_handler(mode, assumptions, &mut on_model)?,dl_theory)));
+                    let mut on_model = DLModelHandler {
+                        theory: &mut dl_theory,
+                    };
+                    *self = Solver::DLSolveHandle(Some((
+                        ctl.solve_with_event_handler(mode, assumptions, &mut on_model)?,
+                        dl_theory,
+                    )));
                     Ok(())
                 }
             },
@@ -256,17 +261,13 @@ impl Solver {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::model failed! No DLSolveHandle.",
                 }),
-                Some((handle,dl_theory)) => {
+                Some((handle, dl_theory)) => {
                     if handle.wait(0.0) {
                         match handle.model() {
                             Ok(Some(model)) => {
                                 let mut buf = vec![];
                                 write_model(model, &mut buf)?;
-                                // TODO: write DL Assignment to stream
-                                for a in dl_theory.assignment_iter(model.thread_id().unwrap()) {
-                                    eprint!("a: {:?}",a)
-                                }
-                                // sys.stdout.write(" {}={}".format(name, value))
+                                write_dl_theory_assignment(dl_theory.assignment_iter(model.thread_id().unwrap()), &mut buf)?;
                                 Ok(ModelResult::Model(buf))
                             }
                             Ok(None) => Ok(ModelResult::Done),
@@ -305,7 +306,7 @@ impl Solver {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::resume failed! No DLSolveHandle.",
                 }),
-                Some((handle,dl_theory)) => {
+                Some((handle, dl_theory)) => {
                     handle.resume()?;
                     Ok(())
                 }
@@ -328,6 +329,12 @@ pub fn write_model(model: &Model, mut out: impl io::Write) -> Result<(), io::Err
             Ok(atom_string) => atom_string,
         };
         writeln!(out, "{}", atom_string)?;
+    }
+    Ok(())
+}
+pub fn write_dl_theory_assignment(dlta_iterator: DLTheoryAssignmentIterator, mut out: impl io::Write) -> Result<(), io::Error> {
+    for theory_value in dlta_iterator {
+        writeln!(out, "{:?}", theory_value)?;
     }
     Ok(())
 }
@@ -395,13 +402,15 @@ pub struct DLModelHandler<'a> {
 
 impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
     fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
-        eprintln!("DLModelHandler::on_solve_event goon:{}",goon);
-        match event {
-            clingo::SolveEvent::Model(model) => {  
-                eprintln!("DLModelHandler::on_solve_event Model found");
-                self.theory.on_model(model)
-            },
-            _ => {true}
+        if *goon {
+            true
+        } else {
+            match event {
+                clingo::SolveEvent::Model(model) => {
+                    self.theory.on_model(model)
+                }
+                _ => true,
+            }
         }
     }
 }

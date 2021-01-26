@@ -18,7 +18,7 @@ seq((T2,ST2),(T1,ST1),Time2) :- assign(T1,ST1,M), assign(T2,ST2,M), T1<T2, execu
 #show.
 
 % instance tai4_4_1.lp
-#const n=100.
+#const n=132.
 
 executionTime(1,1,54).
 executionTime(1,2,34).
