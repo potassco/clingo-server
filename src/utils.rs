@@ -1,4 +1,4 @@
-use clingo::{dl_theory::DLTheoryAssignmentIterator, theory::Theory};
+use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
 use clingo::{ast, dl_theory::DLTheory};
 use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
@@ -267,7 +267,7 @@ impl Solver {
                             Ok(Some(model)) => {
                                 let mut buf = vec![];
                                 write_model(model, &mut buf)?;
-                                write_dl_theory_assignment(dl_theory.assignment_iter(model.thread_id().unwrap()), &mut buf)?;
+                                write_dl_theory_assignment(dl_theory.assignment(model.thread_id().unwrap()), &mut buf)?;
                                 Ok(ModelResult::Model(buf))
                             }
                             Ok(None) => Ok(ModelResult::Done),
@@ -322,19 +322,14 @@ pub fn write_model(model: &Model, mut out: impl io::Write) -> Result<(), io::Err
         Ok(atoms) => atoms,
     };
 
-    for atom in atoms {
-        // retrieve and write the symbol's string
-        let atom_string = match atom.to_string() {
-            Err(e) => return Err(io::Error::new(io::ErrorKind::Other, e)),
-            Ok(atom_string) => atom_string,
-        };
-        writeln!(out, "{}", atom_string)?;
+    for symbol in atoms {
+        writeln!(out, "{}", symbol)?;
     }
     Ok(())
 }
-pub fn write_dl_theory_assignment(dlta_iterator: DLTheoryAssignmentIterator, mut out: impl io::Write) -> Result<(), io::Error> {
-    for theory_value in dlta_iterator {
-        writeln!(out, "{:?}", theory_value)?;
+pub fn write_dl_theory_assignment(dl_theory_assignment: DLTheoryAssignment, mut out: impl io::Write) -> Result<(), io::Error> {
+    for (symbol,theory_value) in dl_theory_assignment {
+        writeln!(out, "{}={}",symbol, theory_value)?;
     }
     Ok(())
 }
