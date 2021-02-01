@@ -1,10 +1,11 @@
 use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
 use clingo::{ast, dl_theory::DLTheory};
-use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
+use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode, Statistics, StatisticsType};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cmp;
 use std::io;
 use std::io::Read;
+use std::io::Write;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -224,6 +225,40 @@ impl Solver {
             }),
         }
     }
+    pub fn statistics(&mut self) -> Result<Vec<u8>, ServerError> {
+        match self {
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::statistics() failed! Solving has already started.",
+            }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::statistics() failed! DLSolving has already started.",
+            }),
+            Solver::Control(ctl) => match ctl.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::statistics() failed! No Control object.",
+                }),
+                Some(ctl) => {
+                    let stats = ctl.statistics()?;
+                    let stats_key = stats.root().unwrap();
+                    let mut buf = Vec::new();
+                    write_statistics(&mut buf, stats, stats_key, 0);
+                    Ok(buf)
+                }
+            },
+            Solver::DLControl(ctl) => match ctl.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::solve() failed! No Control object.",
+                }),
+                Some((ctl, _dl_theory)) => {
+                    let stats = ctl.statistics()?;
+                    let stats_key = stats.root().unwrap();
+                    let mut buf = Vec::new();
+                    write_statistics(&mut buf, stats, stats_key, 0);
+                    Ok(buf)
+                }
+            },
+        }
+    }
     pub fn model(&mut self) -> Result<ModelResult, ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
@@ -306,7 +341,7 @@ impl Solver {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::resume failed! No DLSolveHandle.",
                 }),
-                Some((handle, dl_theory)) => {
+                Some((handle, _dl_theory)) => {
                     handle.resume()?;
                     Ok(())
                 }
@@ -404,8 +439,74 @@ impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
                 clingo::SolveEvent::Model(model) => {
                     self.theory.on_model(model)
                 }
+                clingo::SolveEvent::Statistics(stats) => {
+                    let (step, akku) = stats.split_at_mut(1);
+                    self.theory.on_statistics(step[0],akku[1])
+                }
                 _ => true,
             }
+        }
+    }
+}
+
+fn write_prefix(buf: &mut impl Write, depth: u8) {
+    writeln!(buf,"").unwrap();
+    for _ in 0..depth {
+        write!(buf, "  ").unwrap();
+    }
+}
+
+// recursively print the statistics object
+fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u8) {
+    // get the type of an entry and switch over its various values
+    let statistics_type = stats.statistics_type(key).unwrap();
+    match statistics_type {
+        // write values
+        StatisticsType::Value => {
+            let value = stats
+                .value_get(key)
+                .expect("Failed to retrieve statistics value.");
+            write!(buf, " {}", value).unwrap();
+        }
+
+        // print arrays
+        StatisticsType::Array => {
+            // loop over array elements
+            let size = stats
+                .array_size(key)
+                .expect("Failed to retrieve statistics array size.");
+            for i in 0..size {
+                // write array offset (with prefix for readability)
+                let subkey = stats
+                    .array_at(key, i)
+                    .expect("Failed to retrieve statistics array.");
+                write_prefix(buf,depth);
+                write!(buf,"{} zu:", i).unwrap();
+
+                // recursively write subentry
+                write_statistics(buf,stats, subkey, depth + 1);
+            }
+        }
+
+        // print maps
+        StatisticsType::Map => {
+            // loop over map elements
+            let size = stats.map_size(key).unwrap();
+            for i in 0..size {
+                // get and write map name (with prefix for readability)
+                let name = stats.map_subkey_name(key, i).unwrap();
+                let subkey = stats.map_at(key, name).unwrap();
+                write_prefix(buf,depth);
+                write!(buf,"{}:", name).unwrap();
+
+                // recursively print subentry
+                write_statistics(buf,stats, subkey, depth + 1);
+            }
+        }
+
+        // this case won't occur if the statistics are traversed like this
+        StatisticsType::Empty => {
+            writeln!(buf,"StatisticsType::Empty").unwrap();
         }
     }
 }

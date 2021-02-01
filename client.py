@@ -74,6 +74,10 @@ def main():
 
         response = requests.get(server+'close')
         print(response.text)
+
+        response = requests.get(server+'statistics')
+        print(response.text)
+        
     except Exception as e:
         print(e)
         traceback.print_exception(*sys.exc_info())

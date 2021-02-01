@@ -81,6 +81,14 @@ fn register_dl_theory(state: State<Arc<Mutex<Solver>>>) -> Result<String, Server
     solver.register_dl_theory()?;
     Ok("Difference logic theory registered.".to_string())
 }
+#[get("/statistics")]
+fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock().unwrap();
+    match solver.statistics() {
+        Ok(stats) => Ok(String::from_utf8( stats).expect("expected utf8 string")),
+        Err(e) => Err(e),
+    }
+}
 
 fn main() {
     // load_clingo_dl();
@@ -98,6 +106,7 @@ fn main() {
                 model,
                 resume,
                 close,
+                statistics,
                 register_dl_theory
             ],
         )
