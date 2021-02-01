@@ -1,8 +1,13 @@
-use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode};
+use clingo::{ast, dl_theory::DLTheory};
+use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
+use clingo::{
+    ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode, Statistics,
+    StatisticsType,
+};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cmp;
 use std::io;
-use std::io::Read;
+use std::io::{Read, Write};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -46,7 +51,9 @@ pub enum ModelResult {
 
 pub enum Solver {
     Control(Option<Control>),
+    DLControl(Option<(Control, DLTheory)>),
     SolveHandle(Option<SolveHandle>),
+    DLSolveHandle(Option<(SolveHandle, DLTheory)>),
 }
 unsafe impl Send for Solver {}
 impl Solver {
@@ -55,8 +62,18 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::create() failed! Solver still running!",
             }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::create() failed! Solver still running!",
+            }),
             Solver::Control(_) => {
                 *self = Solver::Control(Some(Control::new(arguments)?));
+                Ok(())
+            }
+            Solver::DLControl(_) => {
+                let mut ctl = Control::new(arguments)?;
+                let mut dl_theory = DLTheory::create();
+                dl_theory.register(&mut ctl);
+                *self = Solver::DLControl(Some((ctl, dl_theory)));
                 Ok(())
             }
         }
@@ -64,6 +81,9 @@ impl Solver {
     pub fn close(&mut self) -> Result<(), ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
+                msg: "Solver::close() failed! Solving has not yet started.",
+            }),
+            Solver::DLControl(_) => Err(ServerError::InternalError {
                 msg: "Solver::close() failed! Solving has not yet started.",
             }),
             Solver::SolveHandle(handle) => match handle.take() {
@@ -75,6 +95,15 @@ impl Solver {
                     Ok(())
                 }
             },
+            Solver::DLSolveHandle(handle) => match handle.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::close() failed! No DLSolveHandle.",
+                }),
+                Some((handle, dl_theory)) => {
+                    *self = Solver::DLControl(Some((handle.close()?, dl_theory)));
+                    Ok(())
+                }
+            },
         }
     }
     pub fn solve(&mut self, mode: SolveMode, assumptions: &[Literal]) -> Result<(), ServerError> {
@@ -82,12 +111,30 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::solve() failed! Solving has already started.",
             }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::solve() failed! DLSolving has already started.",
+            }),
             Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::solve() failed! No Control object.",
                 }),
                 Some(ctl) => {
                     *self = Solver::SolveHandle(Some(ctl.solve(mode, assumptions)?));
+                    Ok(())
+                }
+            },
+            Solver::DLControl(ctl) => match ctl.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::solve() failed! No Control object.",
+                }),
+                Some((ctl, mut dl_theory)) => {
+                    let mut on_model = DLModelHandler {
+                        theory: &mut dl_theory,
+                    };
+                    *self = Solver::DLSolveHandle(Some((
+                        ctl.solve_with_event_handler(mode, assumptions, &mut on_model)?,
+                        dl_theory,
+                    )));
                     Ok(())
                 }
             },
@@ -103,15 +150,29 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::add failed! Solver has been already started.",
             }),
-            Solver::Control(ctl) => match ctl.as_mut() {
-                None => Err(ServerError::InternalError {
-                    msg: "Solver::add failed! No control object.",
-                }),
-                Some(ctl) => {
-                    ctl.add(name, parameters, program)?;
-                    Ok(())
-                }
-            },
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::add failed! DLSolver has been already started.",
+            }),
+            Solver::Control(None) => Err(ServerError::InternalError {
+                msg: "Solver::add failed! No control object.",
+            }),
+            Solver::DLControl(None) => Err(ServerError::InternalError {
+                msg: "Solver::add failed! No control object.",
+            }),
+            Solver::Control(Some(ctl)) => {
+                ctl.add(name, parameters, program)?;
+                Ok(())
+            }
+            Solver::DLControl(Some((ctl, dl_theory))) => {
+                let mut rewriter = Rewriter {
+                    control: ctl,
+                    theory: dl_theory,
+                };
+                // rewrite the program
+                clingo::parse_program(program, &mut rewriter)
+                    .expect("Failed to parse logic program.");
+                Ok(())
+            }
         }
     }
     pub fn ground(&mut self, parts: &[Part]) -> Result<(), ServerError> {
@@ -119,13 +180,83 @@ impl Solver {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::ground failed! Solver has been already started.",
             }),
-            Solver::Control(ctl) => match ctl.as_mut() {
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::ground failed! DLSolver has been already started.",
+            }),
+            Solver::Control(None) => Err(ServerError::InternalError {
+                msg: "Solver::ground failed! No Control object.",
+            }),
+            Solver::DLControl(None) => Err(ServerError::InternalError {
+                msg: "Solver::ground failed! No Control object.",
+            }),
+            Solver::Control(Some(ctl)) => {
+                ctl.ground(parts)?;
+                Ok(())
+            }
+            Solver::DLControl(Some((ctl, dl_theory))) => {
+                ctl.ground(parts)?;
+                dl_theory.prepare(ctl);
+                Ok(())
+            }
+        }
+    }
+    pub fn register_dl_theory(&mut self) -> Result<(), ServerError> {
+        match self {
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::register_dl_theory failed! Solver has been already started.",
+            }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::register_dl_theory failed! DLSolver has been already started.",
+            }),
+            Solver::DLControl(None) => Err(ServerError::InternalError {
+                msg: "Solver::register_dl_theory failed! No Control object.",
+            }),
+            Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::ground failed! No Control object.",
+                    msg: "Solver::register_dl_theory failed! No Control object.",
+                }),
+                Some(mut ctl) => {
+                    let mut dl_theory = DLTheory::create();
+                    dl_theory.register(&mut ctl);
+                    *self = Solver::DLControl(Some((ctl, dl_theory)));
+                    Ok(())
+                }
+            },
+            Solver::DLControl(Some(_)) => Err(ServerError::InternalError {
+                msg: "Solver::register_dl_theory failed! DLTheory already registered.",
+            }),
+        }
+    }
+    pub fn statistics(&mut self) -> Result<Vec<u8>, ServerError> {
+        match self {
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::statistics() failed! Solving has already started.",
+            }),
+            Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::statistics() failed! DLSolving has already started.",
+            }),
+            Solver::Control(ctl) => match ctl.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::statistics() failed! No Control object.",
                 }),
                 Some(ctl) => {
-                    ctl.ground(parts)?;
-                    Ok(())
+                    let stats = ctl.statistics()?;
+                    let stats_key = stats.root().unwrap();
+                    let mut buf = Vec::new();
+                    write_statistics(&mut buf, stats, stats_key, 0);
+                    Ok(buf)
+                }
+            },
+            Solver::DLControl(ctl) => match ctl.take() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::solve() failed! No Control object.",
+                }),
+                Some((ctl, _dl_theory)) => {
+                    let stats = ctl.statistics()?;
+                    let stats_key = stats.root().unwrap();
+                    let mut buf = Vec::new();
+                    write_statistics(&mut buf, stats, stats_key, 0);
+                    Ok(buf)
                 }
             },
         }
@@ -133,6 +264,9 @@ impl Solver {
     pub fn model(&mut self) -> Result<ModelResult, ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
+                msg: "Solver::model failed! Solving has not yet started.",
+            }),
+            Solver::DLControl(_) => Err(ServerError::InternalError {
                 msg: "Solver::model failed! Solving has not yet started.",
             }),
             Solver::SolveHandle(handle) => match handle.as_mut() {
@@ -160,6 +294,35 @@ impl Solver {
                     }
                 }
             },
+            Solver::DLSolveHandle(handle) => match handle.as_mut() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::model failed! No DLSolveHandle.",
+                }),
+                Some((handle, dl_theory)) => {
+                    if handle.wait(0.0) {
+                        match handle.model() {
+                            Ok(Some(model)) => {
+                                let mut buf = vec![];
+                                write_model(model, &mut buf)?;
+                                write_dl_theory_assignment(
+                                    dl_theory.assignment(model.thread_id().unwrap()),
+                                    &mut buf,
+                                )?;
+                                Ok(ModelResult::Model(buf))
+                            }
+                            Ok(None) => Ok(ModelResult::Done),
+                            Err(e) => {
+                                println!("{}", e);
+                                Err(ServerError::InternalError {
+                                    msg: "Solver::model failed! ClingoError.",
+                                })
+                            }
+                        }
+                    } else {
+                        Ok(ModelResult::Running)
+                    }
+                }
+            },
         }
     }
     pub fn resume(&mut self) -> Result<(), ServerError> {
@@ -167,11 +330,23 @@ impl Solver {
             Solver::Control(_) => Err(ServerError::InternalError {
                 msg: "Solver::resume failed! Solver has not yet started.",
             }),
+            Solver::DLControl(_) => Err(ServerError::InternalError {
+                msg: "Solver::resume failed! Solver has not yet started.",
+            }),
             Solver::SolveHandle(handle) => match handle.as_mut() {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::resume failed! No SolveHandle.",
                 }),
                 Some(handle) => {
+                    handle.resume()?;
+                    Ok(())
+                }
+            },
+            Solver::DLSolveHandle(handle) => match handle.as_mut() {
+                None => Err(ServerError::InternalError {
+                    msg: "Solver::resume failed! No DLSolveHandle.",
+                }),
+                Some((handle, _dl_theory)) => {
                     handle.resume()?;
                     Ok(())
                 }
@@ -187,13 +362,17 @@ pub fn write_model(model: &Model, mut out: impl io::Write) -> Result<(), io::Err
         Ok(atoms) => atoms,
     };
 
-    for atom in atoms {
-        // retrieve and write the symbol's string
-        let atom_string = match atom.to_string() {
-            Err(e) => return Err(io::Error::new(io::ErrorKind::Other, e)),
-            Ok(atom_string) => atom_string,
-        };
-        writeln!(out, "{}", atom_string)?;
+    for symbol in atoms {
+        writeln!(out, "{}", symbol)?;
+    }
+    Ok(())
+}
+pub fn write_dl_theory_assignment(
+    dl_theory_assignment: DLTheoryAssignment,
+    mut out: impl io::Write,
+) -> Result<(), io::Error> {
+    for (symbol, theory_value) in dl_theory_assignment {
+        writeln!(out, "{}={}", symbol, theory_value)?;
     }
     Ok(())
 }
@@ -242,5 +421,98 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a RequestId {
         request::Outcome::Success(
             request.local_cache(|| RequestId(ID_COUNTER.fetch_add(1, Ordering::Relaxed))),
         )
+    }
+}
+pub struct Rewriter<'a, 'b> {
+    control: &'a mut Control,
+    theory: &'b mut DLTheory,
+}
+
+impl<'a, 'b> clingo::StatementHandler for Rewriter<'a, 'b> {
+    fn on_statement(&mut self, stm: &ast::Statement) -> bool {
+        let mut builder = ast::ProgramBuilder::from(self.control).unwrap();
+        self.theory.rewrite_statement(stm, &mut builder)
+    }
+}
+pub struct DLModelHandler<'a> {
+    theory: &'a mut DLTheory,
+}
+
+impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
+    fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
+        if *goon {
+            true
+        } else {
+            match event {
+                clingo::SolveEvent::Model(model) => self.theory.on_model(model),
+                clingo::SolveEvent::Statistics(stats) => {
+                    let (step, akku) = stats.split_at_mut(1);
+                    self.theory.on_statistics(step[0], akku[1])
+                }
+                _ => true,
+            }
+        }
+    }
+}
+
+fn write_prefix(buf: &mut impl Write, depth: u8) {
+    writeln!(buf).unwrap();
+    for _ in 0..depth {
+        write!(buf, "  ").unwrap();
+    }
+}
+
+// recursively print the statistics object
+fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u8) {
+    // get the type of an entry and switch over its various values
+    let statistics_type = stats.statistics_type(key).unwrap();
+    match statistics_type {
+        // write values
+        StatisticsType::Value => {
+            let value = stats
+                .value_get(key)
+                .expect("Failed to retrieve statistics value.");
+            write!(buf, " {}", value).unwrap();
+        }
+
+        // print arrays
+        StatisticsType::Array => {
+            // loop over array elements
+            let size = stats
+                .array_size(key)
+                .expect("Failed to retrieve statistics array size.");
+            for i in 0..size {
+                // write array offset (with prefix for readability)
+                let subkey = stats
+                    .array_at(key, i)
+                    .expect("Failed to retrieve statistics array.");
+                write_prefix(buf, depth);
+                write!(buf, "{} zu:", i).unwrap();
+
+                // recursively write subentry
+                write_statistics(buf, stats, subkey, depth + 1);
+            }
+        }
+
+        // print maps
+        StatisticsType::Map => {
+            // loop over map elements
+            let size = stats.map_size(key).unwrap();
+            for i in 0..size {
+                // get and write map name (with prefix for readability)
+                let name = stats.map_subkey_name(key, i).unwrap();
+                let subkey = stats.map_at(key, name).unwrap();
+                write_prefix(buf, depth);
+                write!(buf, "{}:", name).unwrap();
+
+                // recursively print subentry
+                write_statistics(buf, stats, subkey, depth + 1);
+            }
+        }
+
+        // this case won't occur if the statistics are traversed like this
+        StatisticsType::Empty => {
+            writeln!(buf, "StatisticsType::Empty").unwrap();
+        }
     }
 }
