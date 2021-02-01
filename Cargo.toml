@@ -20,4 +20,4 @@ default-features = false
 features = ["json"]
 
 [build-dependencies]
-bindgen = "0.54"
+bindgen = "0.57"
