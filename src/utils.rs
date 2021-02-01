@@ -1,11 +1,13 @@
-use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
 use clingo::{ast, dl_theory::DLTheory};
-use clingo::{ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode, Statistics, StatisticsType};
+use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
+use clingo::{
+    ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode, Statistics,
+    StatisticsType,
+};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cmp;
 use std::io;
-use std::io::Read;
-use std::io::Write;
+use std::io::{Read, Write};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -302,7 +304,10 @@ impl Solver {
                             Ok(Some(model)) => {
                                 let mut buf = vec![];
                                 write_model(model, &mut buf)?;
-                                write_dl_theory_assignment(dl_theory.assignment(model.thread_id().unwrap()), &mut buf)?;
+                                write_dl_theory_assignment(
+                                    dl_theory.assignment(model.thread_id().unwrap()),
+                                    &mut buf,
+                                )?;
                                 Ok(ModelResult::Model(buf))
                             }
                             Ok(None) => Ok(ModelResult::Done),
@@ -362,9 +367,12 @@ pub fn write_model(model: &Model, mut out: impl io::Write) -> Result<(), io::Err
     }
     Ok(())
 }
-pub fn write_dl_theory_assignment(dl_theory_assignment: DLTheoryAssignment, mut out: impl io::Write) -> Result<(), io::Error> {
-    for (symbol,theory_value) in dl_theory_assignment {
-        writeln!(out, "{}={}",symbol, theory_value)?;
+pub fn write_dl_theory_assignment(
+    dl_theory_assignment: DLTheoryAssignment,
+    mut out: impl io::Write,
+) -> Result<(), io::Error> {
+    for (symbol, theory_value) in dl_theory_assignment {
+        writeln!(out, "{}={}", symbol, theory_value)?;
     }
     Ok(())
 }
@@ -436,12 +444,10 @@ impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
             true
         } else {
             match event {
-                clingo::SolveEvent::Model(model) => {
-                    self.theory.on_model(model)
-                }
+                clingo::SolveEvent::Model(model) => self.theory.on_model(model),
                 clingo::SolveEvent::Statistics(stats) => {
                     let (step, akku) = stats.split_at_mut(1);
-                    self.theory.on_statistics(step[0],akku[1])
+                    self.theory.on_statistics(step[0], akku[1])
                 }
                 _ => true,
             }
@@ -450,7 +456,7 @@ impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
 }
 
 fn write_prefix(buf: &mut impl Write, depth: u8) {
-    writeln!(buf,"").unwrap();
+    writeln!(buf).unwrap();
     for _ in 0..depth {
         write!(buf, "  ").unwrap();
     }
@@ -480,11 +486,11 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
                 let subkey = stats
                     .array_at(key, i)
                     .expect("Failed to retrieve statistics array.");
-                write_prefix(buf,depth);
-                write!(buf,"{} zu:", i).unwrap();
+                write_prefix(buf, depth);
+                write!(buf, "{} zu:", i).unwrap();
 
                 // recursively write subentry
-                write_statistics(buf,stats, subkey, depth + 1);
+                write_statistics(buf, stats, subkey, depth + 1);
             }
         }
 
@@ -496,17 +502,17 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
                 // get and write map name (with prefix for readability)
                 let name = stats.map_subkey_name(key, i).unwrap();
                 let subkey = stats.map_at(key, name).unwrap();
-                write_prefix(buf,depth);
-                write!(buf,"{}:", name).unwrap();
+                write_prefix(buf, depth);
+                write!(buf, "{}:", name).unwrap();
 
                 // recursively print subentry
-                write_statistics(buf,stats, subkey, depth + 1);
+                write_statistics(buf, stats, subkey, depth + 1);
             }
         }
 
         // this case won't occur if the statistics are traversed like this
         StatisticsType::Empty => {
-            writeln!(buf,"StatisticsType::Empty").unwrap();
+            writeln!(buf, "StatisticsType::Empty").unwrap();
         }
     }
 }

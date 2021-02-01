@@ -85,7 +85,7 @@ fn register_dl_theory(state: State<Arc<Mutex<Solver>>>) -> Result<String, Server
 fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     let mut solver = state.lock().unwrap();
     match solver.statistics() {
-        Ok(stats) => Ok(String::from_utf8( stats).expect("expected utf8 string")),
+        Ok(stats) => Ok(String::from_utf8(stats).expect("expected utf8 string")),
         Err(e) => Err(e),
     }
 }
