@@ -25,3 +25,9 @@ or
 ```sh
 python client.py -i pigeonhole.lp
 ```
+
+or
+
+```sh
+python client.py -i taskassignment.lp
+```
