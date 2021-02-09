@@ -1,8 +1,8 @@
 use clingo::{ast, dl_theory::DLTheory};
 use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
 use clingo::{
-    ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode, Statistics,
-    StatisticsType,
+    ClingoError, Configuration, ConfigurationType, Control, Id, Literal, Model, Part, ShowType,
+    SolveHandle, SolveMode, Statistics, StatisticsType,
 };
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cmp;
@@ -218,6 +218,12 @@ impl Solver {
                 Some(mut ctl) => {
                     let mut dl_theory = DLTheory::create();
                     dl_theory.register(&mut ctl);
+
+                    // let conf = ctl.configuration_mut().unwrap();
+                    // let root_key = conf.root().unwrap();
+
+                    // print_configuration(conf, root_key, 0);
+
                     *self = Solver::DLControl(Some((ctl, dl_theory)));
                     Ok(())
                 }
@@ -441,13 +447,23 @@ pub struct DLModelHandler<'a> {
 impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
     fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
         if *goon {
-            true
+            match event {
+                clingo::SolveEvent::Model(model) => {
+                    eprintln!("model event goon: true");
+                    true
+                }
+                clingo::SolveEvent::Statistics { step, akku } => {
+                    eprintln!("statistics event goon: true");
+                    true
+                }
+                _ => true,
+            }
         } else {
             match event {
                 clingo::SolveEvent::Model(model) => self.theory.on_model(model),
-                clingo::SolveEvent::Statistics(stats) => {
-                    let (step, akku) = stats.split_at_mut(1);
-                    self.theory.on_statistics(step[0], akku[1])
+                clingo::SolveEvent::Statistics { step, akku } => {
+                    eprintln!("statistics event");
+                    self.theory.on_statistics(step, akku)
                 }
                 _ => true,
             }
@@ -462,7 +478,7 @@ fn write_prefix(buf: &mut impl Write, depth: u8) {
     }
 }
 
-// recursively print the statistics object
+// recursively write the statistics object
 fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u8) {
     // get the type of an entry and switch over its various values
     let statistics_type = stats.statistics_type(key).unwrap();
@@ -475,7 +491,7 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
             write!(buf, " {}", value).unwrap();
         }
 
-        // print arrays
+        // write arrays
         StatisticsType::Array => {
             // loop over array elements
             let size = stats
@@ -494,7 +510,7 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
             }
         }
 
-        // print maps
+        // write maps
         StatisticsType::Map => {
             // loop over map elements
             let size = stats.map_size(key).unwrap();
@@ -505,7 +521,7 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
                 write_prefix(buf, depth);
                 write!(buf, "{}:", name).unwrap();
 
-                // recursively print subentry
+                // recursively write subentry
                 write_statistics(buf, stats, subkey, depth + 1);
             }
         }
@@ -513,6 +529,71 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
         // this case won't occur if the statistics are traversed like this
         StatisticsType::Empty => {
             writeln!(buf, "StatisticsType::Empty").unwrap();
+        }
+    }
+}
+
+fn print_prefix(depth: u8) {
+    println!();
+    for _ in 0..depth {
+        print!("  ");
+    }
+}
+
+// recursively print the configuartion object
+fn print_configuration(conf: &Configuration, key: Id, depth: u8) {
+    // get the type of an entry and switch over its various values
+    let configuration_type = conf.configuration_type(key).unwrap();
+    match configuration_type {
+        // print values
+        ConfigurationType::VALUE => {
+            let value = conf
+                .value_get(key)
+                .expect("Failed to retrieve statistics value.");
+
+            println!("{}", value);
+        }
+
+        // print arrays
+        ConfigurationType::ARRAY => {
+            // loop over array elements
+            let size = conf
+                .array_size(key)
+                .expect("Failed to retrieve statistics array size.");
+            for i in 0..size {
+                // print array offset (with prefix for readability)
+                let subkey = conf
+                    .array_at(key, i)
+                    .expect("Failed to retrieve statistics array.");
+                print_prefix(depth);
+                print!("{}:", i);
+
+                // recursively print subentry
+                print_configuration(conf, subkey, depth + 1);
+            }
+        }
+
+        // print maps
+        ConfigurationType::MAP => {
+            // loop over map elements
+            let size = conf.map_size(key).unwrap();
+            for i in 0..size {
+                // get and print map name (with prefix for readability)
+                let name = conf.map_subkey_name(key, i).unwrap();
+                let subkey = conf.map_at(key, name).unwrap();
+                print_prefix(depth);
+                print!("{}:", name);
+
+                // recursively print subentry
+                print_configuration(conf, subkey, depth + 1);
+            }
+        }
+
+        // this case won't occur if the configuration are traversed like this
+        _ => {
+            let bla = conf.value_get(key).unwrap();
+            print!(" {}", bla);
+            // println!("Unknown ConfigurationType");
         }
     }
 }

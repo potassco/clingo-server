@@ -21,7 +21,7 @@ fn index(id: &RequestId) -> String {
 #[get("/create")]
 fn create(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     let mut solver = state.lock().unwrap();
-    solver.create(vec![String::from("0")])?;
+    solver.create(vec!["0".to_string(), "--stats=2".to_string()])?;
     Ok("Created clingo Solver.".to_string())
 }
 #[post("/add", format = "plain", data = "<data>")]
