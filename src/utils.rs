@@ -446,27 +446,21 @@ pub struct DLModelHandler<'a> {
 
 impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
     fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
-        if *goon {
-            match event {
-                clingo::SolveEvent::Model(model) => {
-                    eprintln!("model event goon: true");
-                    true
+        match event {
+            clingo::SolveEvent::Model(model) => {
+                eprintln!("on_solve_event model");
+                for i in model.symbols(ShowType::ALL).unwrap() {
+                    eprint!("{}", i);
                 }
-                clingo::SolveEvent::Statistics { step, akku } => {
-                    eprintln!("statistics event goon: true");
-                    true
-                }
-                _ => true,
+                eprintln!();
+                eprintln!("call dl_theory::on_model");
+                self.theory.on_model(model)
             }
-        } else {
-            match event {
-                clingo::SolveEvent::Model(model) => self.theory.on_model(model),
-                clingo::SolveEvent::Statistics { step, akku } => {
-                    eprintln!("statistics event");
-                    self.theory.on_statistics(step, akku)
-                }
-                _ => true,
+            clingo::SolveEvent::Statistics { step, akku } => {
+                eprintln!("statistics event");
+                self.theory.on_statistics(step, akku)
             }
+            _ => true,
         }
     }
 }
