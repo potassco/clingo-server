@@ -27,7 +27,8 @@ fn create(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     solver.create(vec!["0".to_string()])?;
     Ok("Created clingo Solver.".to_string())
 }
-#[post("/add", format = "plain", data = "<data>")]
+// #[post("/add", format = "plain", data = "<data>")]
+#[post("/add", data = "<data>")]
 fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
     let mut solver = state.lock().unwrap();
     let mut ds = data.open();

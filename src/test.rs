@@ -1,3 +1,5 @@
+use std::{any::Any, fmt::Debug};
+
 use super::rocket;
 
 use rocket::http::Status;
@@ -18,6 +20,12 @@ fn test_create() {
         response.body_string(),
         Some("Difference logic theory registered.".into())
     );
+    let mut response = client.post("/add").body("body.").dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    assert_eq!(
+        response.body_string(),
+        Some("Added data to Solver.".into())
+    );
 }
 #[test]
 fn test_register_dl_theory() {
@@ -27,5 +35,16 @@ fn test_register_dl_theory() {
     assert_eq!(
         response.body_string(),
         Some("InternalError: Solver::register_dl_theory failed! No Control object.".into())
+    );
+}
+#[test]
+fn test_add() {
+    let client = Client::new(rocket()).unwrap();
+    let request = client.post("/add").body("body.");
+    let mut response = request.dispatch();
+    assert_eq!(response.status(), Status::Ok);
+    assert_eq!(
+        response.body_string(),
+        Some("InternalError: Solver::add failed! No control object.".into())
     );
 }
