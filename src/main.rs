@@ -13,6 +13,9 @@ use std::io::Read;
 use std::sync::{Arc, Mutex};
 use utils::{ModelResult, RequestId, ServerError, Solver};
 
+#[cfg(test)]
+mod test;
+
 #[get("/")]
 fn index(id: &RequestId) -> String {
     format!("This is request #{}.", id.0)
@@ -90,25 +93,25 @@ fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     }
 }
 
-fn main() {
-    // load_clingo_dl();
+fn rocket() -> rocket::Rocket {
     let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
-    rocket::ignite()
-        .manage(state)
-        .mount(
-            "/",
-            routes![
-                index,
-                create,
-                add,
-                ground,
-                solve,
-                model,
-                resume,
-                close,
-                statistics,
-                register_dl_theory
-            ],
-        )
-        .launch();
+    rocket::ignite().manage(state).mount(
+        "/",
+        routes![
+            index,
+            create,
+            add,
+            ground,
+            solve,
+            model,
+            resume,
+            close,
+            statistics,
+            register_dl_theory
+        ],
+    )
+}
+
+fn main() {
+    rocket().launch();
 }

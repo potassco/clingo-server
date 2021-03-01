@@ -21,6 +21,14 @@ pub enum ServerError {
     #[error("InternalError: {msg}")]
     InternalError { msg: &'static str },
 }
+use rocket::response::{self, Responder};
+
+impl Responder<'static> for ServerError {
+    fn respond_to(self, request: &Request<'_>) -> response::Result<'static> {
+        let person_string = format!("{}", self);
+        person_string.respond_to(request)
+    }
+}
 impl Serialize for ServerError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
