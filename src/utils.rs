@@ -83,10 +83,10 @@ impl Solver {
     pub fn create(&mut self, arguments: std::vec::Vec<String>) -> Result<(), ServerError> {
         match self {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::create() failed! Solver still running!",
+                msg: "Solver::create failed! Solver still running!",
             }),
             Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::create() failed! Solver still running!",
+                msg: "Solver::create failed! Solver still running!",
             }),
             Solver::Control(_) => {
                 *self = Solver::Control(Some(Control::new(arguments)?));
@@ -104,14 +104,14 @@ impl Solver {
     pub fn close(&mut self) -> Result<(), ServerError> {
         match self {
             Solver::Control(_) => Err(ServerError::InternalError {
-                msg: "Solver::close() failed! Solving has not yet started.",
+                msg: "Solver::close failed! Solving has not yet started.",
             }),
             Solver::DLControl(_) => Err(ServerError::InternalError {
-                msg: "Solver::close() failed! Solving has not yet started.",
+                msg: "Solver::close failed! Solving has not yet started.",
             }),
             Solver::SolveHandle(handle) => match handle.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::close() failed! No SolveHandle.",
+                    msg: "Solver::close failed! No SolveHandle.",
                 }),
                 Some(handle) => {
                     *self = Solver::Control(Some(handle.close()?));
@@ -120,7 +120,7 @@ impl Solver {
             },
             Solver::DLSolveHandle(handle) => match handle.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::close() failed! No DLSolveHandle.",
+                    msg: "Solver::close failed! No DLSolveHandle.",
                 }),
                 Some((handle, dl_theory)) => {
                     *self = Solver::DLControl(Some((handle.close()?, dl_theory)));
@@ -132,14 +132,14 @@ impl Solver {
     pub fn solve(&mut self, mode: SolveMode, assumptions: &[Literal]) -> Result<(), ServerError> {
         match self {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::solve() failed! Solving has already started.",
+                msg: "Solver::solve failed! Solving has already started.",
             }),
             Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::solve() failed! DLSolving has already started.",
+                msg: "Solver::solve failed! DLSolving has already started.",
             }),
             Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::solve() failed! No Control object.",
+                    msg: "Solver::solve failed! No Control object.",
                 }),
                 Some(ctl) => {
                     *self = Solver::SolveHandle(Some(ctl.solve(mode, assumptions)?));
@@ -148,7 +148,7 @@ impl Solver {
             },
             Solver::DLControl(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::solve() failed! No Control object.",
+                    msg: "Solver::solve failed! No Control object.",
                 }),
                 Some((ctl, dl_theory)) => {
                     let on_model = DLEventHandler {
@@ -253,14 +253,14 @@ impl Solver {
     pub fn statistics(&mut self) -> Result<Vec<u8>, ServerError> {
         match self {
             Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::statistics() failed! Solving has already started.",
+                msg: "Solver::statistics failed! Solving has already started.",
             }),
             Solver::DLSolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::statistics() failed! DLSolving has already started.",
+                msg: "Solver::statistics failed! DLSolving has already started.",
             }),
             Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::statistics() failed! No Control object.",
+                    msg: "Solver::statistics failed! No Control object.",
                 }),
                 Some(ctl) => {
                     let stats = ctl.statistics()?;
@@ -272,7 +272,7 @@ impl Solver {
             },
             Solver::DLControl(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::solve() failed! No Control object.",
+                    msg: "Solver::solve failed! No Control object.",
                 }),
                 Some((ctl, _dl_theory)) => {
                     let stats = ctl.statistics()?;

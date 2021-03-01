@@ -57,7 +57,7 @@ fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
 fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     let mut solver = state.lock().unwrap();
     solver.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
-    Ok("Solver solving.".to_string())
+    Ok("Solving.".to_string())
 }
 #[get("/model")]
 fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Json<ModelResult>, ServerError> {
