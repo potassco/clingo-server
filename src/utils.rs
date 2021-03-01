@@ -1,13 +1,15 @@
 use clingo::{ast, dl_theory::DLTheory};
 use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
 use clingo::{
-    ClingoError, Configuration, ConfigurationType, Control, Id, Literal, Model, Part, ShowType,
-    SolveHandle, SolveMode, Statistics, StatisticsType,
+    ClingoError, Control, Literal, Model, Part, PlainSolveHandle, ShowType, SolveHandle, SolveMode,
+    Statistics, StatisticsType,
 };
 use serde::ser::{Serialize, SerializeStruct, Serializer};
+use std::cell::RefCell;
 use std::cmp;
 use std::io;
 use std::io::{Read, Write};
+use std::rc::Rc;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -48,12 +50,25 @@ pub enum ModelResult {
     Model(Vec<u8>),
     Done,
 }
-
+pub struct DLEventHandler {
+    theory: Rc<RefCell<DLTheory>>,
+}
+impl clingo::SolveEventHandler for DLEventHandler {
+    fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
+        match event {
+            clingo::SolveEvent::Model(model) => self.theory.borrow_mut().on_model(model),
+            clingo::SolveEvent::Statistics { step, akku } => {
+                self.theory.borrow_mut().on_statistics(step, akku)
+            }
+            _ => true,
+        }
+    }
+}
 pub enum Solver {
     Control(Option<Control>),
-    DLControl(Option<(Control, DLTheory)>),
-    SolveHandle(Option<SolveHandle>),
-    DLSolveHandle(Option<(SolveHandle, DLTheory)>),
+    DLControl(Option<(Control, Rc<RefCell<DLTheory>>)>),
+    SolveHandle(Option<PlainSolveHandle>),
+    DLSolveHandle(Option<(SolveHandle<DLEventHandler>, Rc<RefCell<DLTheory>>)>),
 }
 unsafe impl Send for Solver {}
 impl Solver {
@@ -73,7 +88,7 @@ impl Solver {
                 let mut ctl = Control::new(arguments)?;
                 let mut dl_theory = DLTheory::create();
                 dl_theory.register(&mut ctl);
-                *self = Solver::DLControl(Some((ctl, dl_theory)));
+                *self = Solver::DLControl(Some((ctl, Rc::new(RefCell::new(dl_theory)))));
                 Ok(())
             }
         }
@@ -127,12 +142,12 @@ impl Solver {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::solve() failed! No Control object.",
                 }),
-                Some((ctl, mut dl_theory)) => {
-                    let mut on_model = DLModelHandler {
-                        theory: &mut dl_theory,
+                Some((ctl, dl_theory)) => {
+                    let on_model = DLEventHandler {
+                        theory: dl_theory.clone(),
                     };
                     *self = Solver::DLSolveHandle(Some((
-                        ctl.solve_with_event_handler(mode, assumptions, &mut on_model)?,
+                        ctl.solve_with_event_handler(mode, assumptions, Box::new(on_model))?,
                         dl_theory,
                     )));
                     Ok(())
@@ -166,7 +181,7 @@ impl Solver {
             Solver::DLControl(Some((ctl, dl_theory))) => {
                 let mut rewriter = Rewriter {
                     control: ctl,
-                    theory: dl_theory,
+                    theory: &mut dl_theory.borrow_mut(),
                 };
                 // rewrite the program
                 clingo::parse_program(program, &mut rewriter)
@@ -195,7 +210,7 @@ impl Solver {
             }
             Solver::DLControl(Some((ctl, dl_theory))) => {
                 ctl.ground(parts)?;
-                dl_theory.prepare(ctl);
+                dl_theory.borrow_mut().prepare(ctl);
                 Ok(())
             }
         }
@@ -218,13 +233,7 @@ impl Solver {
                 Some(mut ctl) => {
                     let mut dl_theory = DLTheory::create();
                     dl_theory.register(&mut ctl);
-
-                    // let conf = ctl.configuration_mut().unwrap();
-                    // let root_key = conf.root().unwrap();
-
-                    // print_configuration(conf, root_key, 0);
-
-                    *self = Solver::DLControl(Some((ctl, dl_theory)));
+                    *self = Solver::DLControl(Some((ctl, Rc::new(RefCell::new(dl_theory)))));
                     Ok(())
                 }
             },
@@ -275,7 +284,7 @@ impl Solver {
             Solver::DLControl(_) => Err(ServerError::InternalError {
                 msg: "Solver::model failed! Solving has not yet started.",
             }),
-            Solver::SolveHandle(handle) => match handle.as_mut() {
+            Solver::SolveHandle(handle) => match handle {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::model failed! No SolveHandle.",
                 }),
@@ -300,18 +309,21 @@ impl Solver {
                     }
                 }
             },
-            Solver::DLSolveHandle(handle) => match handle.as_mut() {
+            Solver::DLSolveHandle(handle) => match handle {
                 None => Err(ServerError::InternalError {
                     msg: "Solver::model failed! No DLSolveHandle.",
                 }),
                 Some((handle, dl_theory)) => {
                     if handle.wait(0.0) {
-                        match handle.model() {
+                        match handle.model_mut() {
                             Ok(Some(model)) => {
+                                // dl_theory.on_model(model);
                                 let mut buf = vec![];
                                 write_model(model, &mut buf)?;
                                 write_dl_theory_assignment(
-                                    dl_theory.assignment(model.thread_id().unwrap()),
+                                    dl_theory
+                                        .borrow_mut()
+                                        .assignment(model.thread_id().unwrap()),
                                     &mut buf,
                                 )?;
                                 Ok(ModelResult::Model(buf))
@@ -440,30 +452,6 @@ impl<'a, 'b> clingo::StatementHandler for Rewriter<'a, 'b> {
         self.theory.rewrite_statement(stm, &mut builder)
     }
 }
-pub struct DLModelHandler<'a> {
-    theory: &'a mut DLTheory,
-}
-
-impl<'a> clingo::SolveEventHandler for DLModelHandler<'a> {
-    fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
-        match event {
-            clingo::SolveEvent::Model(model) => {
-                eprintln!("on_solve_event model");
-                for i in model.symbols(ShowType::ALL).unwrap() {
-                    eprint!("{}", i);
-                }
-                eprintln!();
-                eprintln!("call dl_theory::on_model");
-                self.theory.on_model(model)
-            }
-            clingo::SolveEvent::Statistics { step, akku } => {
-                eprintln!("statistics event");
-                self.theory.on_statistics(step, akku)
-            }
-            _ => true,
-        }
-    }
-}
 
 fn write_prefix(buf: &mut impl Write, depth: u8) {
     writeln!(buf).unwrap();
@@ -523,71 +511,6 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
         // this case won't occur if the statistics are traversed like this
         StatisticsType::Empty => {
             writeln!(buf, "StatisticsType::Empty").unwrap();
-        }
-    }
-}
-
-fn print_prefix(depth: u8) {
-    println!();
-    for _ in 0..depth {
-        print!("  ");
-    }
-}
-
-// recursively print the configuartion object
-fn print_configuration(conf: &Configuration, key: Id, depth: u8) {
-    // get the type of an entry and switch over its various values
-    let configuration_type = conf.configuration_type(key).unwrap();
-    match configuration_type {
-        // print values
-        ConfigurationType::VALUE => {
-            let value = conf
-                .value_get(key)
-                .expect("Failed to retrieve statistics value.");
-
-            println!("{}", value);
-        }
-
-        // print arrays
-        ConfigurationType::ARRAY => {
-            // loop over array elements
-            let size = conf
-                .array_size(key)
-                .expect("Failed to retrieve statistics array size.");
-            for i in 0..size {
-                // print array offset (with prefix for readability)
-                let subkey = conf
-                    .array_at(key, i)
-                    .expect("Failed to retrieve statistics array.");
-                print_prefix(depth);
-                print!("{}:", i);
-
-                // recursively print subentry
-                print_configuration(conf, subkey, depth + 1);
-            }
-        }
-
-        // print maps
-        ConfigurationType::MAP => {
-            // loop over map elements
-            let size = conf.map_size(key).unwrap();
-            for i in 0..size {
-                // get and print map name (with prefix for readability)
-                let name = conf.map_subkey_name(key, i).unwrap();
-                let subkey = conf.map_at(key, name).unwrap();
-                print_prefix(depth);
-                print!("{}:", name);
-
-                // recursively print subentry
-                print_configuration(conf, subkey, depth + 1);
-            }
-        }
-
-        // this case won't occur if the configuration are traversed like this
-        _ => {
-            let bla = conf.value_get(key).unwrap();
-            print!(" {}", bla);
-            // println!("Unknown ConfigurationType");
         }
     }
 }
