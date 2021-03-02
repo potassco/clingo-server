@@ -9,10 +9,9 @@ conda install -c potassco/label/dev clingo clingo-dl
 Set paths to clingo and clingo-dl library `libclingo.so` `libclingo-dl.so`
 
 ```sh
-export CLINGO_LIBRARY_PATH=/scratch/miniconda3/envs/clingo/lib
-export CLINGO_DL_LIBRARY_PATH=/clingo-dl/lib
-export LD_LIBRARY_PATH=/scratch/miniconda3/envs/clingo/lib:/clingo-dl/lib
-
+export CLINGO_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
+export CLINGO_DL_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
+export LD_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
 ```
 
 Start the server with

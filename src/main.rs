@@ -13,6 +13,9 @@ use std::io::Read;
 use std::sync::{Arc, Mutex};
 use utils::{ModelResult, RequestId, ServerError, Solver};
 
+#[cfg(test)]
+mod test;
+
 #[get("/")]
 fn index(id: &RequestId) -> String {
     format!("This is request #{}.", id.0)
@@ -24,7 +27,8 @@ fn create(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     solver.create(vec!["0".to_string()])?;
     Ok("Created clingo Solver.".to_string())
 }
-#[post("/add", format = "plain", data = "<data>")]
+// #[post("/add", format = "plain", data = "<data>")]
+#[post("/add", data = "<data>")]
 fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
     let mut solver = state.lock().unwrap();
     let mut ds = data.open();
@@ -53,7 +57,7 @@ fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
 fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     let mut solver = state.lock().unwrap();
     solver.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
-    Ok("Solver solving.".to_string())
+    Ok("Solving.".to_string())
 }
 #[get("/model")]
 fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Json<ModelResult>, ServerError> {
@@ -90,25 +94,25 @@ fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     }
 }
 
-fn main() {
-    // load_clingo_dl();
+fn rocket() -> rocket::Rocket {
     let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
-    rocket::ignite()
-        .manage(state)
-        .mount(
-            "/",
-            routes![
-                index,
-                create,
-                add,
-                ground,
-                solve,
-                model,
-                resume,
-                close,
-                statistics,
-                register_dl_theory
-            ],
-        )
-        .launch();
+    rocket::ignite().manage(state).mount(
+        "/",
+        routes![
+            index,
+            create,
+            add,
+            ground,
+            solve,
+            model,
+            resume,
+            close,
+            statistics,
+            register_dl_theory
+        ],
+    )
+}
+
+fn main() {
+    rocket().launch();
 }
