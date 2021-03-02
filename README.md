@@ -37,3 +37,5 @@ or with dl constraints
 ```sh
 python client.py -i taskassignment.lp
 ```
+
+[API documentation](API.md)
