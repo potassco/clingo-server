@@ -139,6 +139,10 @@ curl http://localhost:8000/model
 
 Status: 200 OK 
 
+```
+Running.
+```
+
 ```json
 {"Model":[113,10]}
 ```
