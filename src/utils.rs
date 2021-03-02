@@ -4,6 +4,8 @@ use clingo::{
     ClingoError, Control, Literal, Model, Part, PlainSolveHandle, ShowType, SolveHandle, SolveMode,
     Statistics, StatisticsType,
 };
+use rocket::response::{self, Responder};
+use rocket_contrib::json::Json;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cell::RefCell;
 use std::cmp;
@@ -21,12 +23,10 @@ pub enum ServerError {
     #[error("InternalError: {msg}")]
     InternalError { msg: &'static str },
 }
-use rocket::response::{self, Responder};
-
 impl Responder<'static> for ServerError {
     fn respond_to(self, request: &Request<'_>) -> response::Result<'static> {
-        let person_string = format!("{}", self);
-        person_string.respond_to(request)
+        let json = Json(self);
+        json.respond_to(request)
     }
 }
 impl Serialize for ServerError {
@@ -36,13 +36,13 @@ impl Serialize for ServerError {
     {
         let mut s = serializer.serialize_struct("ServerError", 2)?;
         match self {
-            ServerError::ClingoError(c) => {
+            ServerError::ClingoError(e) => {
                 s.serialize_field("type", "ClingoError")?;
-                s.serialize_field("msg", "")?;
+                s.serialize_field("msg", &format!("{}", e))?;
             }
-            ServerError::IOError(c) => {
+            ServerError::IOError(e) => {
                 s.serialize_field("type", "IoError")?;
-                s.serialize_field("msg", "")?;
+                s.serialize_field("msg", &format!("{}", e))?;
             }
             ServerError::InternalError { msg } => {
                 s.serialize_field("type", "InternalError")?;
@@ -139,7 +139,7 @@ impl Solver {
             }),
             Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::solve failed! No Control object.",
+                    msg: "Solver::solve failed! No control object.",
                 }),
                 Some(ctl) => {
                     *self = Solver::SolveHandle(Some(ctl.solve(mode, assumptions)?));
@@ -148,7 +148,7 @@ impl Solver {
             },
             Solver::DLControl(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::solve failed! No Control object.",
+                    msg: "Solver::solve failed! No control object.",
                 }),
                 Some((ctl, dl_theory)) => {
                     let on_model = DLEventHandler {
@@ -207,10 +207,10 @@ impl Solver {
                 msg: "Solver::ground failed! DLSolver has been already started.",
             }),
             Solver::Control(None) => Err(ServerError::InternalError {
-                msg: "Solver::ground failed! No Control object.",
+                msg: "Solver::ground failed! No control object.",
             }),
             Solver::DLControl(None) => Err(ServerError::InternalError {
-                msg: "Solver::ground failed! No Control object.",
+                msg: "Solver::ground failed! No control object.",
             }),
             Solver::Control(Some(ctl)) => {
                 ctl.ground(parts)?;
@@ -232,11 +232,11 @@ impl Solver {
                 msg: "Solver::register_dl_theory failed! DLSolver has been already started.",
             }),
             Solver::DLControl(None) => Err(ServerError::InternalError {
-                msg: "Solver::register_dl_theory failed! No Control object.",
+                msg: "Solver::register_dl_theory failed! No control object.",
             }),
             Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::register_dl_theory failed! No Control object.",
+                    msg: "Solver::register_dl_theory failed! No control object.",
                 }),
                 Some(mut ctl) => {
                     let mut dl_theory = DLTheory::create();
@@ -260,7 +260,7 @@ impl Solver {
             }),
             Solver::Control(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::statistics failed! No Control object.",
+                    msg: "Solver::statistics failed! No control object.",
                 }),
                 Some(ctl) => {
                     let stats = ctl.statistics()?;
@@ -272,7 +272,7 @@ impl Solver {
             },
             Solver::DLControl(ctl) => match ctl.take() {
                 None => Err(ServerError::InternalError {
-                    msg: "Solver::solve failed! No Control object.",
+                    msg: "Solver::solve failed! No control object.",
                 }),
                 Some((ctl, _dl_theory)) => {
                     let stats = ctl.statistics()?;
