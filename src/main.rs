@@ -95,7 +95,7 @@ fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
 }
 
 fn rocket() -> rocket::Rocket {
-    let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::Control(None)));
+    let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::None));
     rocket::ignite().manage(state).mount(
         "/",
         routes![
