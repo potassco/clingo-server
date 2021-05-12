@@ -1,11 +1,8 @@
 use clingo::{
-    ast, dl_theory::DLTheory, NoFunctionHandler, NoLogger, NoObserver, NoPropagator,
-    SolveHandleLPOFE,
+    ast, control, dl_theory::DLTheory, ClingoError, Control, Literal, Model, Part, ShowType,
+    SolveHandle, SolveHandleWithEventHandler, SolveMode, Statistics, StatisticsType,
 };
-use clingo::{
-    control, ClingoError, Control, Literal, Model, Part, ShowType, SolveHandle, SolveMode,
-    Statistics, StatisticsType,
-};
+type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
 use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
 use rocket::response::{self, Responder};
 use rocket_contrib::json::Json;
@@ -93,8 +90,6 @@ impl Solver {
         mem::take(self)
     }
 }
-type DLSolveHandle =
-    SolveHandleLPOFE<NoLogger, NoPropagator, NoObserver, NoFunctionHandler, DLEventHandler>;
 unsafe impl Send for Solver {}
 impl Solver {
     pub fn create(&mut self, arguments: std::vec::Vec<String>) -> Result<(), ServerError> {
@@ -210,7 +205,7 @@ impl Solver {
                     theory: &mut dl_theory.borrow_mut(),
                 };
                 // rewrite the program
-                clingo::parse_program(program, &mut rewriter)
+                clingo::ast::parse_string_with_statement_handler(program, &mut rewriter)
                     .expect("Failed to parse logic program.");
                 Ok(())
             }
@@ -453,7 +448,7 @@ pub struct Rewriter<'a, 'b> {
     theory: &'b mut DLTheory,
 }
 
-impl<'a, 'b> clingo::StatementHandler for Rewriter<'a, 'b> {
+impl<'a, 'b> clingo::ast::StatementHandler for Rewriter<'a, 'b> {
     fn on_statement(&mut self, stm: &ast::Statement) -> bool {
         let mut builder = ast::ProgramBuilder::from(self.control).unwrap();
         self.theory.rewrite_statement(stm, &mut builder)

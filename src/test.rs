@@ -108,8 +108,8 @@ fn test_model() {
     let data: Value = serde_json::from_str(&data).unwrap();
     assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        &data["msg"],
-        "Solver::model failed! Solving has not yet started."
+        data["msg"],
+        Value::String("Solver::model failed! No SolveHandle.".to_string())
     );
 }
 #[test]
@@ -121,8 +121,8 @@ fn test_resume() {
     let data: Value = serde_json::from_str(&data).unwrap();
     assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        &data["msg"],
-        "Solver::resume failed! Solver has not yet started."
+        data["msg"],
+        Value::String("Solver::resume failed! No SolveHandle.".to_string())
     );
 }
 #[test]
@@ -134,8 +134,8 @@ fn test_close() {
     let data: Value = serde_json::from_str(&data).unwrap();
     assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        &data["msg"],
-        "Solver::close failed! Solving has not yet started."
+        data["msg"],
+        Value::String("Solver::close failed! No SolveHandle.".to_string())
     );
 }
 #[test]
