@@ -58,6 +58,40 @@ pub enum ModelResult {
     Model(Vec<u8>),
     Done,
 }
+#[derive(Debug)]
+pub enum StatisticsResult {
+    Value(f64),
+    Array(Vec<StatisticsResult>),
+    Map(Vec<(String, StatisticsResult)>),
+    Empty,
+}
+use serde::ser::SerializeMap;
+use serde::ser::SerializeSeq;
+impl Serialize for StatisticsResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            StatisticsResult::Array(array) => {
+                let mut seq = serializer.serialize_seq(Some(array.len()))?;
+                for e in array {
+                    seq.serialize_element(e)?;
+                }
+                seq.end()
+            }
+            StatisticsResult::Map(array) => {
+                let mut map = serializer.serialize_map(Some(array.len()))?;
+                for (k, v) in array {
+                    map.serialize_entry(k, v)?;
+                }
+                map.end()
+            }
+            StatisticsResult::Value(value) => serializer.serialize_f64(*value),
+            Self::Empty => serializer.serialize_unit(),
+        }
+    }
+}
 pub struct DLEventHandler {
     theory: Rc<RefCell<DLTheory>>,
 }
@@ -265,7 +299,7 @@ impl Solver {
             }
         }
     }
-    pub fn statistics(&mut self) -> Result<Vec<u8>, ServerError> {
+    pub fn statistics(&mut self) -> Result<StatisticsResult, ServerError> {
         match self {
             Solver::None => Err(ServerError::InternalError {
                 msg: "Solver::statistics failed! No control object.",
@@ -279,16 +313,14 @@ impl Solver {
             Solver::Control(ctl) => {
                 let stats = ctl.statistics()?;
                 let stats_key = stats.root().unwrap();
-                let mut buf = Vec::new();
-                write_statistics(&mut buf, stats, stats_key, 0);
-                Ok(buf)
+                let stats_result = parse_statistics(stats, stats_key);
+                Ok(stats_result)
             }
             Solver::DLControl(ctl, _dl_theory) => {
                 let stats = ctl.statistics()?;
                 let stats_key = stats.root().unwrap();
-                let mut buf = Vec::new();
-                write_statistics(&mut buf, stats, stats_key, 0);
-                Ok(buf)
+                let stats_result = parse_statistics(stats, stats_key);
+                Ok(stats_result)
             }
         }
     }
@@ -514,5 +546,55 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
         StatisticsType::Empty => {
             writeln!(buf, "StatisticsType::Empty").unwrap();
         }
+    }
+}
+// recursively parse the statistics object
+fn parse_statistics(stats: &Statistics, key: u64) -> StatisticsResult {
+    // get the type of an entry and switch over its various values
+    let statistics_type = stats.statistics_type(key).unwrap();
+    match statistics_type {
+        // parse values
+        StatisticsType::Value => {
+            let value = stats
+                .value_get(key)
+                .expect("Failed to retrieve statistics value.");
+            StatisticsResult::Value(value)
+        }
+
+        // parse arrays
+        StatisticsType::Array => {
+            // loop over array elements
+            let size = stats
+                .array_size(key)
+                .expect("Failed to retrieve statistics array size.");
+            let mut array = vec![];
+            for i in 0..size {
+                let subkey = stats
+                    .array_at(key, i)
+                    .expect("Failed to retrieve statistics array.");
+                // recursively parse subentry
+                let x = parse_statistics(stats, subkey);
+                array.push(x);
+            }
+            StatisticsResult::Array(array)
+        }
+
+        // parse maps
+        StatisticsType::Map => {
+            // loop over map elements
+            let size = stats.map_size(key).unwrap();
+            let mut array = vec![];
+            for i in 0..size {
+                let name = stats.map_subkey_name(key, i).unwrap();
+                let subkey = stats.map_at(key, name).unwrap();
+                // recursively parse subentry
+                let elem = parse_statistics(stats, subkey);
+                array.push((name.to_string(), elem));
+            }
+            StatisticsResult::Map(array)
+        }
+
+        // this case won't occur if the statistics are traversed like this
+        StatisticsType::Empty => StatisticsResult::Empty,
     }
 }

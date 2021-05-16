@@ -3,8 +3,10 @@ import sys
 import time
 import traceback
 import requests
+import json
 
 server = 'http://localhost:8000/'
+
 
 def main():
     try:
@@ -60,13 +62,17 @@ def main():
                 elif json_response == 'Done':
                     print("Search finished, no more models.")
                     break
-                else:
+                elif 'Model' in json_response:
                     model = json_response['Model']
                     count += 1
                     print("Model", count, ':')
-                    print(bytes(model).decode("utf-8") )
+                    print(bytes(model).decode("utf-8"))
                     response = requests.get(server+'resume')
                     print(response.text)
+                else:
+                    print("Error unexpected respose to model/ request")
+                    print(json_response)
+                    exit()
             else:
                 print("ServerError")
                 print(response.text)
@@ -76,8 +82,10 @@ def main():
         print(response.text)
 
         response = requests.get(server+'statistics')
-        print(response.text)
-        
+        dictionary = response.json()
+        json_formatted_str = json.dumps(dictionary, indent=2)
+        print("Statistics:", json_formatted_str)
+
     except Exception as e:
         print(e)
         traceback.print_exception(*sys.exc_info())

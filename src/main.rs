@@ -11,7 +11,7 @@ use rocket::{Data, State};
 use rocket_contrib::json::Json;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
-use utils::{ModelResult, RequestId, ServerError, Solver};
+use utils::{ModelResult, RequestId, ServerError, Solver, StatisticsResult};
 
 #[cfg(test)]
 mod test;
@@ -86,10 +86,10 @@ fn register_dl_theory(state: State<Arc<Mutex<Solver>>>) -> Result<String, Server
     Ok("Difference logic theory registered.".to_string())
 }
 #[get("/statistics")]
-fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<Json<StatisticsResult>, ServerError> {
     let mut solver = state.lock().unwrap();
     match solver.statistics() {
-        Ok(stats) => Ok(String::from_utf8(stats).expect("expected utf8 string")),
+        Ok(stats) => Ok(Json(stats)),
         Err(e) => Err(e),
     }
 }
