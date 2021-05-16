@@ -11,7 +11,7 @@ use rocket::{Data, State};
 use rocket_contrib::json::Json;
 use std::io::Read;
 use std::sync::{Arc, Mutex};
-use utils::{ModelResult, RequestId, ServerError, Solver, StatisticsResult};
+use utils::{ConfigurationResult, ModelResult, RequestId, ServerError, Solver, StatisticsResult};
 
 #[cfg(test)]
 mod test;
@@ -93,6 +93,16 @@ fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<Json<StatisticsResult>
         Err(e) => Err(e),
     }
 }
+#[get("/configuration")]
+fn configuration(
+    state: State<Arc<Mutex<Solver>>>,
+) -> Result<Json<ConfigurationResult>, ServerError> {
+    let mut solver = state.lock().unwrap();
+    match solver.configuration() {
+        Ok(stats) => Ok(Json(stats)),
+        Err(e) => Err(e),
+    }
+}
 
 fn rocket() -> rocket::Rocket {
     let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::None));
@@ -108,6 +118,7 @@ fn rocket() -> rocket::Rocket {
             resume,
             close,
             statistics,
+            configuration,
             register_dl_theory
         ],
     )

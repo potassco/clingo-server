@@ -1,6 +1,7 @@
 use clingo::{
-    ast, control, dl_theory::DLTheory, ClingoError, Control, Literal, Model, Part, ShowType,
-    SolveHandle, SolveHandleWithEventHandler, SolveMode, Statistics, StatisticsType,
+    ast, control, dl_theory::DLTheory, ClingoError, Configuration, ConfigurationType, Control, Id,
+    Literal, Model, Part, ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode,
+    Statistics, StatisticsType,
 };
 type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
 use clingo::{dl_theory::DLTheoryAssignment, theory::Theory};
@@ -58,6 +59,9 @@ pub enum ModelResult {
     Model(Vec<u8>),
     Done,
 }
+
+use serde::ser::SerializeMap;
+use serde::ser::SerializeSeq;
 #[derive(Debug)]
 pub enum StatisticsResult {
     Value(f64),
@@ -65,29 +69,59 @@ pub enum StatisticsResult {
     Map(Vec<(String, StatisticsResult)>),
     Empty,
 }
-use serde::ser::SerializeMap;
-use serde::ser::SerializeSeq;
 impl Serialize for StatisticsResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match self {
-            StatisticsResult::Array(array) => {
+            Self::Array(array) => {
                 let mut seq = serializer.serialize_seq(Some(array.len()))?;
                 for e in array {
                     seq.serialize_element(e)?;
                 }
                 seq.end()
             }
-            StatisticsResult::Map(array) => {
+            Self::Map(array) => {
                 let mut map = serializer.serialize_map(Some(array.len()))?;
                 for (k, v) in array {
                     map.serialize_entry(k, v)?;
                 }
                 map.end()
             }
-            StatisticsResult::Value(value) => serializer.serialize_f64(*value),
+            Self::Value(value) => serializer.serialize_f64(*value),
+            Self::Empty => serializer.serialize_unit(),
+        }
+    }
+}
+#[derive(Debug)]
+pub enum ConfigurationResult {
+    Value(String),
+    Array(Vec<ConfigurationResult>),
+    Map(Vec<(String, ConfigurationResult)>),
+    Empty,
+}
+impl Serialize for ConfigurationResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Array(array) => {
+                let mut seq = serializer.serialize_seq(Some(array.len()))?;
+                for e in array {
+                    seq.serialize_element(e)?;
+                }
+                seq.end()
+            }
+            Self::Map(array) => {
+                let mut map = serializer.serialize_map(Some(array.len()))?;
+                for (k, v) in array {
+                    map.serialize_entry(k, v)?;
+                }
+                map.end()
+            }
+            Self::Value(value) => serializer.serialize_str(value),
             Self::Empty => serializer.serialize_unit(),
         }
     }
@@ -320,6 +354,31 @@ impl Solver {
                 let stats = ctl.statistics()?;
                 let stats_key = stats.root().unwrap();
                 let stats_result = parse_statistics(stats, stats_key);
+                Ok(stats_result)
+            }
+        }
+    }
+    pub fn configuration(&mut self) -> Result<ConfigurationResult, ServerError> {
+        match self {
+            Solver::None => Err(ServerError::InternalError {
+                msg: "Solver::configuration failed! No control object.",
+            }),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::configuration failed! Solving has already started.",
+            }),
+            Solver::DLSolveHandle(_, _) => Err(ServerError::InternalError {
+                msg: "Solver::configuration failed! DLSolving has already started.",
+            }),
+            Solver::Control(ctl) => {
+                let stats = ctl.configuration()?;
+                let stats_key = stats.root().unwrap();
+                let stats_result = parse_configuration(stats, stats_key);
+                Ok(stats_result)
+            }
+            Solver::DLControl(ctl, _dl_theory) => {
+                let stats = ctl.configuration()?;
+                let stats_key = stats.root().unwrap();
+                let stats_result = parse_configuration(stats, stats_key);
                 Ok(stats_result)
             }
         }
@@ -596,5 +655,97 @@ fn parse_statistics(stats: &Statistics, key: u64) -> StatisticsResult {
 
         // this case won't occur if the statistics are traversed like this
         StatisticsType::Empty => StatisticsResult::Empty,
+    }
+}
+fn print_prefix(depth: u8) {
+    println!();
+    for _ in 0..depth {
+        print!("  ");
+    }
+}
+// recursively print the configuartion object
+fn print_configuration(conf: &Configuration, key: Id, depth: u8) {
+    // get the type of an entry and switch over its various values
+    let configuration_type = conf.configuration_type(key).unwrap();
+    if configuration_type.contains(ConfigurationType::VALUE) {
+        // print values
+
+        let value = conf
+            .value_get(key)
+            .expect("Failed to retrieve statistics value.");
+
+        print!("{}", value);
+    } else if configuration_type.contains(ConfigurationType::ARRAY) {
+        // loop over array elements
+        let size = conf
+            .array_size(key)
+            .expect("Failed to retrieve statistics array size.");
+        for i in 0..size {
+            // print array offset (with prefix for readability)
+            let subkey = conf
+                .array_at(key, i)
+                .expect("Failed to retrieve statistics array.");
+            print_prefix(depth);
+            print!("{}: ", i);
+
+            // recursively print subentry
+            print_configuration(conf, subkey, depth + 1);
+        }
+    } else if configuration_type.contains(ConfigurationType::MAP) {
+        // loop over map elements
+        let size = conf.map_size(key).unwrap();
+        for i in 0..size {
+            // get and print map name (with prefix for readability)
+            let name = conf.map_subkey_name(key, i).unwrap();
+            let subkey = conf.map_at(key, name).unwrap();
+            print_prefix(depth);
+            print!("{}: ", name);
+
+            // recursively print subentry
+            print_configuration(conf, subkey, depth + 1);
+        }
+    } else {
+        eprintln!("Unknown ConfigurationType");
+        unreachable!()
+    }
+}
+// recursively parse the configuration object
+fn parse_configuration(conf: &Configuration, key: Id) -> ConfigurationResult {
+    // get the type of an entry and switch over its various values
+    let configuration_type = conf.configuration_type(key).unwrap();
+    if configuration_type.contains(ConfigurationType::VALUE) {
+        let value = conf
+            .value_get(key)
+            .expect("Failed to retrieve statistics value.");
+        ConfigurationResult::Value(value)
+    } else if configuration_type.contains(ConfigurationType::ARRAY) {
+        let size = conf
+            .array_size(key)
+            .expect("Failed to retrieve statistics array size.");
+
+        let mut array = vec![];
+        for i in 0..size {
+            let name = conf.map_subkey_name(key, i).unwrap();
+            let subkey = conf.map_at(key, name).unwrap();
+            // recursively parse subentry
+            let elem = parse_configuration(conf, subkey);
+            array.push((name.to_string(), elem));
+        }
+        ConfigurationResult::Map(array)
+    } else if configuration_type.contains(ConfigurationType::MAP) {
+        // loop over map elements
+        let size = conf.map_size(key).unwrap();
+        let mut array = vec![];
+        for i in 0..size {
+            let name = conf.map_subkey_name(key, i).unwrap();
+            let subkey = conf.map_at(key, name).unwrap();
+            // recursively parse subentry
+            let elem = parse_configuration(conf, subkey);
+            array.push((name.to_string(), elem));
+        }
+        ConfigurationResult::Map(array)
+    } else {
+        eprintln!("Unknown ConfigurationType ");
+        ConfigurationResult::Empty
     }
 }

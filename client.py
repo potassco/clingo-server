@@ -86,6 +86,11 @@ def main():
         json_formatted_str = json.dumps(dictionary, indent=2)
         print("Statistics:", json_formatted_str)
 
+        response = requests.get(server+'configuration')
+        dictionary = response.json()
+        json_formatted_str = json.dumps(dictionary, indent=2)
+        print("Configuration:", json_formatted_str)
+
     except Exception as e:
         print(e)
         traceback.print_exception(*sys.exc_info())
