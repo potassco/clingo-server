@@ -14,7 +14,6 @@ use std::io;
 use std::io::{Read, Write};
 use std::rc::Rc;
 use thiserror::Error;
-
 #[derive(Error, Debug)]
 pub enum ServerError {
     #[error("ClingoError: ")]
@@ -99,7 +98,6 @@ pub enum ConfigurationResult {
     Value(String),
     Array(Vec<ConfigurationResult>),
     Map(Vec<(String, ConfigurationResult)>),
-    Empty,
 }
 impl Serialize for ConfigurationResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -122,7 +120,6 @@ impl Serialize for ConfigurationResult {
                 map.end()
             }
             Self::Value(value) => serializer.serialize_str(value),
-            Self::Empty => serializer.serialize_unit(),
         }
     }
 }
@@ -208,7 +205,7 @@ impl Solver {
                 Ok(())
             }
             Solver::DLSolveHandle(handle, theory) => {
-                *self = Solver::DLControl(handle.close()?, theory.clone());
+                *self = Solver::DLControl(handle.close()?, theory);
                 Ok(())
             }
         }
@@ -273,8 +270,7 @@ impl Solver {
                     theory: &mut dl_theory.borrow_mut(),
                 };
                 // rewrite the program
-                clingo::ast::parse_string_with_statement_handler(program, &mut rewriter)
-                    .expect("Failed to parse logic program.");
+                clingo::ast::parse_string_with_statement_handler(program, &mut rewriter)?;
                 Ok(())
             }
         }
@@ -346,14 +342,14 @@ impl Solver {
             }),
             Solver::Control(ctl) => {
                 let stats = ctl.statistics()?;
-                let stats_key = stats.root().unwrap();
-                let stats_result = parse_statistics(stats, stats_key);
+                let root_key = stats.root()?;
+                let stats_result = parse_statistics(stats, root_key)?;
                 Ok(stats_result)
             }
             Solver::DLControl(ctl, _dl_theory) => {
                 let stats = ctl.statistics()?;
-                let stats_key = stats.root().unwrap();
-                let stats_result = parse_statistics(stats, stats_key);
+                let root_key = stats.root()?;
+                let stats_result = parse_statistics(stats, root_key)?;
                 Ok(stats_result)
             }
         }
@@ -370,16 +366,45 @@ impl Solver {
                 msg: "Solver::configuration failed! DLSolving has already started.",
             }),
             Solver::Control(ctl) => {
-                let stats = ctl.configuration()?;
-                let stats_key = stats.root().unwrap();
-                let stats_result = parse_configuration(stats, stats_key);
-                Ok(stats_result)
+                let conf = ctl.configuration()?;
+                let root_key = conf.root()?;
+                let conf_result = parse_configuration(conf, root_key)?;
+                Ok(conf_result)
             }
             Solver::DLControl(ctl, _dl_theory) => {
-                let stats = ctl.configuration()?;
-                let stats_key = stats.root().unwrap();
-                let stats_result = parse_configuration(stats, stats_key);
-                Ok(stats_result)
+                let conf = ctl.configuration()?;
+                let root_key = conf.root()?;
+                let conf_result = parse_configuration(conf, root_key)?;
+                Ok(conf_result)
+            }
+        }
+    }
+    pub fn set_configuration(
+        &mut self,
+        new_conf: &ConfigurationResult,
+    ) -> Result<ConfigurationResult, ServerError> {
+        match self {
+            Solver::None => Err(ServerError::InternalError {
+                msg: "Solver::set_configuration failed! No control object.",
+            }),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::set_configuration failed! Solving has already started.",
+            }),
+            Solver::DLSolveHandle(_, _) => Err(ServerError::InternalError {
+                msg: "Solver::set_configuration failed! DLSolving has already started.",
+            }),
+            Solver::Control(ctl) => {
+                let conf = ctl.configuration_mut()?;
+                let root_key = conf.root()?;
+                let conf_result = parse_configuration(conf, root_key)?;
+                Ok(conf_result)
+            }
+            Solver::DLControl(ctl, _dl_theory) => {
+                let conf = ctl.configuration_mut()?;
+                let root_key = conf.root()?;
+                __set_conf(conf, new_conf, root_key)?;
+                let conf_result = parse_configuration(conf, root_key)?;
+                Ok(conf_result)
             }
         }
     }
@@ -403,12 +428,9 @@ impl Solver {
                             Ok(ModelResult::Model(buf))
                         }
                         Ok(None) => Ok(ModelResult::Done),
-                        Err(e) => {
-                            println!("{}", e);
-                            Err(ServerError::InternalError {
-                                msg: "Solver::model failed! ClingoError.",
-                            })
-                        }
+                        Err(e) => Err(ServerError::InternalError {
+                            msg: "Solver::model failed! ClingoError.",
+                        }),
                     }
                 } else {
                     Ok(ModelResult::Running)
@@ -430,12 +452,9 @@ impl Solver {
                             Ok(ModelResult::Model(buf))
                         }
                         Ok(None) => Ok(ModelResult::Done),
-                        Err(e) => {
-                            println!("{}", e);
-                            Err(ServerError::InternalError {
-                                msg: "Solver::model failed! ClingoError.",
-                            })
-                        }
+                        Err(e) => Err(ServerError::InternalError {
+                            msg: "Solver::model failed! ClingoError.",
+                        }),
                     }
                 } else {
                     Ok(ModelResult::Running)
@@ -608,53 +627,47 @@ fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u
     }
 }
 // recursively parse the statistics object
-fn parse_statistics(stats: &Statistics, key: u64) -> StatisticsResult {
+fn parse_statistics(stats: &Statistics, key: u64) -> Result<StatisticsResult, ClingoError> {
     // get the type of an entry and switch over its various values
-    let statistics_type = stats.statistics_type(key).unwrap();
+    let statistics_type = stats.statistics_type(key)?;
     match statistics_type {
         // parse values
         StatisticsType::Value => {
-            let value = stats
-                .value_get(key)
-                .expect("Failed to retrieve statistics value.");
-            StatisticsResult::Value(value)
+            let value = stats.value_get(key)?;
+            Ok(StatisticsResult::Value(value))
         }
 
         // parse arrays
         StatisticsType::Array => {
             // loop over array elements
-            let size = stats
-                .array_size(key)
-                .expect("Failed to retrieve statistics array size.");
+            let size = stats.array_size(key)?;
             let mut array = vec![];
             for i in 0..size {
-                let subkey = stats
-                    .array_at(key, i)
-                    .expect("Failed to retrieve statistics array.");
+                let subkey = stats.array_at(key, i)?;
                 // recursively parse subentry
-                let x = parse_statistics(stats, subkey);
+                let x = parse_statistics(stats, subkey)?;
                 array.push(x);
             }
-            StatisticsResult::Array(array)
+            Ok(StatisticsResult::Array(array))
         }
 
         // parse maps
         StatisticsType::Map => {
             // loop over map elements
-            let size = stats.map_size(key).unwrap();
+            let size = stats.map_size(key)?;
             let mut array = vec![];
             for i in 0..size {
-                let name = stats.map_subkey_name(key, i).unwrap();
-                let subkey = stats.map_at(key, name).unwrap();
+                let name = stats.map_subkey_name(key, i)?;
+                let subkey = stats.map_at(key, name)?;
                 // recursively parse subentry
-                let elem = parse_statistics(stats, subkey);
+                let elem = parse_statistics(stats, subkey)?;
                 array.push((name.to_string(), elem));
             }
-            StatisticsResult::Map(array)
+            Ok(StatisticsResult::Map(array))
         }
 
         // this case won't occur if the statistics are traversed like this
-        StatisticsType::Empty => StatisticsResult::Empty,
+        StatisticsType::Empty => Ok(StatisticsResult::Empty),
     }
 }
 fn print_prefix(depth: u8) {
@@ -710,42 +723,61 @@ fn print_configuration(conf: &Configuration, key: Id, depth: u8) {
     }
 }
 // recursively parse the configuration object
-fn parse_configuration(conf: &Configuration, key: Id) -> ConfigurationResult {
+fn parse_configuration(conf: &Configuration, key: Id) -> Result<ConfigurationResult, ClingoError> {
     // get the type of an entry and switch over its various values
-    let configuration_type = conf.configuration_type(key).unwrap();
+    let configuration_type = conf.configuration_type(key)?;
     if configuration_type.contains(ConfigurationType::VALUE) {
-        let value = conf
-            .value_get(key)
-            .expect("Failed to retrieve statistics value.");
-        ConfigurationResult::Value(value)
+        let value = conf.value_get(key)?;
+        Ok(ConfigurationResult::Value(value))
     } else if configuration_type.contains(ConfigurationType::ARRAY) {
-        let size = conf
-            .array_size(key)
-            .expect("Failed to retrieve statistics array size.");
+        let size = conf.array_size(key)?;
 
-        let mut array = vec![];
+        let mut array = Vec::with_capacity(size);
         for i in 0..size {
-            let name = conf.map_subkey_name(key, i).unwrap();
-            let subkey = conf.map_at(key, name).unwrap();
+            let subkey = conf.array_at(key, i)?;
             // recursively parse subentry
-            let elem = parse_configuration(conf, subkey);
-            array.push((name.to_string(), elem));
+            let elem = parse_configuration(conf, subkey)?;
+            array.push(elem);
         }
-        ConfigurationResult::Map(array)
+        Ok(ConfigurationResult::Array(array))
     } else if configuration_type.contains(ConfigurationType::MAP) {
         // loop over map elements
-        let size = conf.map_size(key).unwrap();
-        let mut array = vec![];
+        let size = conf.map_size(key)?;
+        let mut array = Vec::with_capacity(size);
         for i in 0..size {
-            let name = conf.map_subkey_name(key, i).unwrap();
-            let subkey = conf.map_at(key, name).unwrap();
+            let name = conf.map_subkey_name(key, i)?;
+            let subkey = conf.map_at(key, name)?;
             // recursively parse subentry
-            let elem = parse_configuration(conf, subkey);
+            let elem = parse_configuration(conf, subkey)?;
             array.push((name.to_string(), elem));
         }
-        ConfigurationResult::Map(array)
+        Ok(ConfigurationResult::Map(array))
     } else {
         eprintln!("Unknown ConfigurationType ");
-        ConfigurationResult::Empty
+        unreachable!()
     }
+}
+fn __set_conf(
+    conf: &mut Configuration,
+    new_conf: &ConfigurationResult,
+    key: Id,
+) -> Result<(), ClingoError> {
+    match new_conf {
+        ConfigurationResult::Value(v) => {
+            conf.value_set(key, v)?;
+        }
+        ConfigurationResult::Array(arr) => {
+            for (i, e) in arr.iter().enumerate() {
+                let subkey = conf.array_at(key, i)?;
+                __set_conf(conf, e, subkey)?;
+            }
+        }
+        ConfigurationResult::Map(m) => {
+            for (name, c) in m {
+                let subkey = conf.map_at(key, name)?;
+                __set_conf(conf, c, subkey)?;
+            }
+        }
+    };
+    Ok(())
 }

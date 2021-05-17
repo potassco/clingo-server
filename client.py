@@ -1,11 +1,55 @@
 import argparse
 import sys
+import io
 import time
 import traceback
 import requests
 import json
 
 server = 'http://localhost:8000/'
+conf_fail = '{\
+  "tester": {\
+    "share": ""\
+  }\
+}'
+conf = '{\
+  "tester": {\
+    "solver": [],\
+    "configuration": "auto",\
+    "share": "auto",\
+    "learn_explicit": "0",\
+    "sat_prepro": "no"\
+  },\
+  "solve": {\
+    "solve_limit": "umax,umax",\
+    "parallel_mode": "1,compete",\
+    "global_restarts": "no",\
+    "distribute": "conflict,global,4,4194303",\
+    "integrate": "gp,1024,all",\
+    "enum_mode": "auto",\
+    "project": "no",\
+    "models": "0",\
+    "opt_mode": "opt"\
+  },\
+  "asp": {\
+    "trans_ext": "dynamic",\
+    "eq": "3",\
+    "backprop": "0",\
+    "supp_models": "0",\
+    "no_ufs_check": "0",\
+    "no_gamma": "0",\
+    "eq_dfs": "0",\
+    "dlp_old_map": "0"\
+  },\
+  "solver": [],\
+  "configuration": "auto",\
+  "share": "auto",\
+  "learn_explicit": "0",\
+  "sat_prepro": "no",\
+  "stats": "0",\
+  "parse_ext": "false",\
+  "parse_maxsat": "false"\
+}'
 
 
 def main():
@@ -17,8 +61,7 @@ def main():
         args = parser.parse_args()
 
         response = requests.get(server)
-        data = response.text
-        print(data)
+        print(response.text)
 
         response = requests.get(server+'create')
         if response.status_code == 500:
@@ -29,24 +72,20 @@ def main():
             print(response.text)
 
         response = requests.get(server+'register_dl_theory')
-        data = response.text
-        print(data)
+        print(response.text)
 
         with open(args.input, 'rb') as f:
             response = requests.post(server+'add', data=f.read(),
                                      headers={
-                                         "Content-Type": "text/plain; charset=utf-8 "}
-                                     )
-            data = response.text
-            print(data)
+                "Content-Type": "text/plain; charset=utf-8 "}
+            )
+            print(response.text)
 
         response = requests.get(server+'ground')
-        data = response.text
-        print(data)
+        print(response.text)
 
         response = requests.get(server+'solve')
-        data = response.text
-        print(data)
+        print(response.text)
 
         count = 0
         while True:
@@ -86,10 +125,24 @@ def main():
         json_formatted_str = json.dumps(dictionary, indent=2)
         print("Statistics:", json_formatted_str)
 
+        # get configuration
         response = requests.get(server+'configuration')
         dictionary = response.json()
         json_formatted_str = json.dumps(dictionary, indent=2)
         print("Configuration:", json_formatted_str)
+
+        # set configuration
+        response = requests.post(server+'set_configuration', data=io.StringIO(conf).read(),
+                                 headers={
+            "Content-Type": "application/json; charset=utf-8 "}
+        )
+        print(response.text)
+
+        # # get configuration
+        # response = requests.get(server+'configuration')
+        # dictionary = response.json()
+        # json_formatted_str = json.dumps(dictionary, indent=2)
+        # print("Configuration:", json_formatted_str)
 
     except Exception as e:
         print(e)
