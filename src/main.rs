@@ -23,20 +23,18 @@ fn index(id: &RequestId) -> String {
 
 #[get("/create")]
 fn create(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     solver.create(vec!["0".to_string()])?;
     Ok("Created clingo Solver.".to_string())
 }
 // #[post("/add", format = "plain", data = "<data>")]
 #[post("/add", data = "<data>")]
 fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     let mut ds = data.open();
     let mut buf = String::new();
     ds.read_to_string(&mut buf)?;
@@ -45,10 +43,9 @@ fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerErr
 }
 #[get("/ground")]
 fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     // ground the base part
     let part = match Part::new("base", &[]) {
         Err(_) => {
@@ -64,19 +61,17 @@ fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
 }
 #[get("/solve")]
 fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     solver.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
     Ok("Solving.".to_string())
 }
 #[get("/model")]
 fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Json<ModelResult>, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     match solver.model() {
         Ok(mr) => Ok(Json(mr)),
         Err(e) => Err(e),
@@ -84,37 +79,33 @@ fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Json<ModelResult>, ServerEr
 }
 #[get("/resume")]
 fn resume(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     solver.resume()?;
     Ok("Search is resumed.".to_string())
 }
 #[get("/close")]
 fn close(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     solver.close()?;
     Ok("Solve handle closed.".to_string())
 }
 #[get("/register_dl_theory")]
 fn register_dl_theory(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     solver.register_dl_theory()?;
     Ok("Difference logic theory registered.".to_string())
 }
 #[get("/statistics")]
 fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<Json<StatisticsResult>, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     match solver.statistics() {
         Ok(stats) => Ok(Json(stats)),
         Err(e) => Err(e),
@@ -124,10 +115,9 @@ fn statistics(state: State<Arc<Mutex<Solver>>>) -> Result<Json<StatisticsResult>
 fn configuration(
     state: State<Arc<Mutex<Solver>>>,
 ) -> Result<Json<ConfigurationResult>, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     match solver.configuration() {
         Ok(stats) => Ok(Json(stats)),
         Err(e) => Err(e),
@@ -135,10 +125,9 @@ fn configuration(
 }
 #[post("/set_configuration", format = "application/json", data = "<data>")]
 fn set_configuration(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
-    let mut solver = match state.lock() {
-        Ok(solver) => solver,
-        Err(_) => return Err(ServerError::InternalError { msg: "PoisonError" }),
-    };
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     let mut ds = data.open();
     let mut buf = String::new();
     ds.read_to_string(&mut buf)?;
