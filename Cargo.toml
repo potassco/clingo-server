@@ -6,7 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
-clingo = { version = "0.7.0-beta.1", git = "https://github.com/potassco/clingo-rs", branch = "st/next", features = ["dl-theory"] }
+clingo = { version = "0.7.0-beta.1", git = "https://github.com/potassco/clingo-rs", branch = "st/theory-trait", features = ["dl-theory"] }
 rocket = "0.4.7"
 thiserror = "1.0"
 # libloading = "0.6"
