@@ -211,13 +211,13 @@ impl Solver {
         match x {
             Solver::None => {
                 return Err(ServerError::InternalError {
-                    msg: "Solver::close failed! Solving is not running.",
+                    msg: "Solver::close failed! Solver is not running.",
                 })
             }
             Solver::Control(_) => {
                 *self = x;
                 return Err(ServerError::InternalError {
-                    msg: "Solver::close failed! Solving is not running.",
+                    msg: "Solver::close failed! Solver is not running.",
                 });
             }
             Solver::SolveHandle(SolveHandleWrapper::DLTheory(handle, dl_theory)) => {
