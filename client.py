@@ -145,7 +145,7 @@ def main():
                     response = requests.get(server+'resume')
                     print(response.text)
                 else:
-                    print("Error unexpected respose to model/ request")
+                    print("Error unexpected response to model/ request")
                     print(json_response)
                     exit()
             else:

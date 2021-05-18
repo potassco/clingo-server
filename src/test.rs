@@ -135,7 +135,7 @@ fn test_close() {
     assert_eq!(data["type"], "InternalError");
     assert_eq!(
         data["msg"],
-        Value::String("Solver::close failed! No SolveHandle.".to_string())
+        Value::String("Solver::close failed! Solver is not running.".to_string())
     );
 }
 #[test]
