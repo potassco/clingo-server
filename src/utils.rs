@@ -408,6 +408,66 @@ impl Solver {
             }
         }
     }
+    pub fn solve_with_assumptions(
+        &mut self,
+        assumptions: &[(clingo::Symbol, bool)],
+    ) -> Result<(), ServerError> {
+        match self {
+            Solver::None => Err(ServerError::InternalError {
+                msg: "Solver::solve_with_assumptions failed! No control object.",
+            }),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::solve_with_assumptions failed! Solving has already started.",
+            }),
+            Solver::DLSolveHandle(_, _) => Err(ServerError::InternalError {
+                msg: "Solver::solve_with_assumptions failed! DLSolving has already started.",
+            }),
+            Solver::Control(ctl) => {
+                // get the program literal corresponding to the external atom
+                let atoms = ctl.symbolic_atoms()?;
+                let mut atm_it = atoms.iter()?;
+
+                let mut assumption_literals = Vec::with_capacity(assumptions.len());
+                for (sym, sign) in assumptions {
+                    if let Some(item) = atm_it.find(|e| e.symbol().unwrap() == *sym) {
+                        let mut lit = item.literal()?;
+                        if !*sign {
+                            lit = lit.negate();
+                        }
+                        assumption_literals.push(lit)
+                    } else {
+                        return Err(ServerError::InternalError {
+                            msg: "Solver::solve_with_assumptions failed! \
+                                  The assumptions contain a literal that is not defined in the logic program.",
+                        });
+                    }
+                }
+                self.solve(SolveMode::ASYNC | SolveMode::YIELD, &assumption_literals)
+            }
+            Solver::DLControl(ctl, _dl_theory) => {
+                // get the program literal corresponding to the external atom
+                let atoms = ctl.symbolic_atoms()?;
+                let mut atm_it = atoms.iter()?;
+
+                let mut assumption_literals = Vec::with_capacity(assumptions.len());
+                for (sym, sign) in assumptions {
+                    if let Some(item) = atm_it.find(|e| e.symbol().unwrap() == *sym) {
+                        let mut lit = item.literal()?;
+                        if !*sign {
+                            lit = lit.negate();
+                        }
+                        assumption_literals.push(lit)
+                    } else {
+                        return Err(ServerError::InternalError {
+                            msg: "Solver::solve_with_assumptions failed! \
+                                  The assumptions contain a literal that is not defined in the logic program.",
+                        });
+                    }
+                }
+                self.solve(SolveMode::ASYNC | SolveMode::YIELD, &assumption_literals)
+            }
+        }
+    }
     pub fn model(&mut self) -> Result<ModelResult, ServerError> {
         match self {
             Solver::None => Err(ServerError::InternalError {
@@ -428,9 +488,7 @@ impl Solver {
                             Ok(ModelResult::Model(buf))
                         }
                         Ok(None) => Ok(ModelResult::Done),
-                        Err(e) => Err(ServerError::InternalError {
-                            msg: "Solver::model failed! ClingoError.",
-                        }),
+                        Err(e) => Err(e.into()),
                     }
                 } else {
                     Ok(ModelResult::Running)
@@ -444,17 +502,13 @@ impl Solver {
                             let mut buf = vec![];
                             write_model(model, &mut buf)?;
                             write_dl_theory_assignment(
-                                dl_theory
-                                    .borrow_mut()
-                                    .assignment(model.thread_id().unwrap()),
+                                dl_theory.borrow_mut().assignment(model.thread_id()?),
                                 &mut buf,
                             )?;
                             Ok(ModelResult::Model(buf))
                         }
                         Ok(None) => Ok(ModelResult::Done),
-                        Err(e) => Err(ServerError::InternalError {
-                            msg: "Solver::model failed! ClingoError.",
-                        }),
+                        Err(e) => Err(e.into()),
                     }
                 } else {
                     Ok(ModelResult::Running)

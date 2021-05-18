@@ -35,8 +35,8 @@ fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerErr
     let mut solver = state
         .lock()
         .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
-    let mut ds = data.open();
     let mut buf = String::new();
+    let mut ds = data.open();
     ds.read_to_string(&mut buf)?;
     solver.add("base", &[], &buf)?;
     Ok("Added data to Solver.".to_string())
@@ -47,14 +47,9 @@ fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
         .lock()
         .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     // ground the base part
-    let part = match Part::new("base", &[]) {
-        Err(_) => {
-            return Err(ServerError::InternalError {
-                msg: "NulError while trying to create base Part",
-            })
-        }
-        Ok(part) => part,
-    };
+    let part = Part::new("base", &[]).map_err(|_| ServerError::InternalError {
+        msg: "NulError while trying to create base Part",
+    })?;
     let parts = vec![part];
     solver.ground(&parts)?;
     Ok("Grounding.".to_string())
@@ -66,6 +61,29 @@ fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
         .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
     solver.solve(SolveMode::ASYNC | SolveMode::YIELD, &[])?;
     Ok("Solving.".to_string())
+}
+#[post(
+    "/solve_with_assumptions",
+    format = "application/json",
+    data = "<data>"
+)]
+fn solve_with_assumptions(
+    state: State<Arc<Mutex<Solver>>>,
+    data: Data,
+) -> Result<String, ServerError> {
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
+    let mut buf = String::new();
+    let mut ds = data.open();
+    ds.read_to_string(&mut buf)?;
+    let val = serde_json::from_str(&buf).map_err(|_| ServerError::InternalError {
+        msg: "Could not parse json data",
+    })?;
+
+    let assumptions = json_to_assumptions(&val)?;
+    solver.solve_with_assumptions(&assumptions)?;
+    Ok("Solving with assumptions.".to_string())
 }
 #[get("/model")]
 fn model(state: State<Arc<Mutex<Solver>>>) -> Result<Json<ModelResult>, ServerError> {
@@ -128,22 +146,18 @@ fn set_configuration(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<Str
     let mut solver = state
         .lock()
         .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
-    let mut ds = data.open();
     let mut buf = String::new();
+    let mut ds = data.open();
     ds.read_to_string(&mut buf)?;
-    match serde_json::from_str(&buf) {
-        Ok(v) => {
-            let c = json_to_configuration_result(&v)?;
-            solver.set_configuration(&c)?;
-        }
-        Err(_) => {
-            return Err(ServerError::InternalError {
-                msg: "Could not parse configuration data",
-            });
-        }
-    }
+    let val = serde_json::from_str(&buf).map_err(|_| ServerError::InternalError {
+        msg: "Could not parse json data",
+    })?;
+
+    let c = json_to_configuration_result(&val)?;
+    solver.set_configuration(&c)?;
     Ok("Set configuration.".to_string())
 }
+
 use serde_json::Value;
 fn json_to_configuration_result(val: &Value) -> Result<ConfigurationResult, ServerError> {
     match val {
@@ -175,6 +189,48 @@ fn json_to_configuration_result(val: &Value) -> Result<ConfigurationResult, Serv
         }
     }
 }
+fn json_to_assumptions(val: &Value) -> Result<Vec<(clingo::Symbol, bool)>, ServerError> {
+    match val {
+        Value::Array(a) => {
+            let mut arr = Vec::with_capacity(a.len());
+            for val in a {
+                let val = match val {
+                    Value::Array(a) => {
+                        let name = match a.get(0) {
+                            Some(Value::String(s)) => s,
+                            _ => {
+                                return Err(ServerError::InternalError {
+                                    msg: "Could not parse assumptions data",
+                                })
+                            }
+                        };
+                        let sym = clingo::parse_term(&name)?;
+
+                        let sign = match a.get(1) {
+                            Some(Value::Bool(b)) => *b,
+                            _ => {
+                                return Err(ServerError::InternalError {
+                                    msg: "Could not parse assumptions data",
+                                })
+                            }
+                        };
+                        (sym, sign)
+                    }
+                    _ => {
+                        return Err(ServerError::InternalError {
+                            msg: "Could not parse assumptions data",
+                        })
+                    }
+                };
+                arr.push(val)
+            }
+            Ok(arr)
+        }
+        _ => Err(ServerError::InternalError {
+            msg: "Could not parse assumptions data",
+        }),
+    }
+}
 fn rocket() -> rocket::Rocket {
     let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::None));
     rocket::ignite().manage(state).mount(
@@ -191,6 +247,7 @@ fn rocket() -> rocket::Rocket {
             statistics,
             configuration,
             set_configuration,
+            solve_with_assumptions,
             register_dl_theory
         ],
     )

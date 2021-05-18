@@ -56,13 +56,23 @@ def main():
     try:
         parser = argparse.ArgumentParser(
             description="Test the clingo server")
-        parser.add_argument('-i', '--input',
-                            help='logic program', required=True)
+        parser.add_argument('-i', '--input', required=True,
+                            help='logic program')
+        parser.add_argument(
+            '-c', '--conf',  action='store_true', required=False,
+            help='set and get configuration')
+        parser.add_argument(
+            '-s', '--stats',  action='store_true', required=False,
+            help='get statistics')
+
+        parser.add_argument('--assume',  action='store_true', required=False,
+                            help='assume queen(3,1) to be true')
         args = parser.parse_args()
 
         response = requests.get(server)
         print(response.text)
 
+        # create solver
         response = requests.get(server+'create')
         if response.status_code == 500:
             print("Solver already running ...")
@@ -71,9 +81,11 @@ def main():
             response = requests.get(server+'create')
             print(response.text)
 
+        # register theory
         response = requests.get(server+'register_dl_theory')
         print(response.text)
 
+        # add logic program
         with open(args.input, 'rb') as f:
             response = requests.post(server+'add', data=f.read(),
                                      headers={
@@ -81,12 +93,36 @@ def main():
             )
             print(response.text)
 
+        # set configuration
+        if args.conf:
+            response = requests.post(server+'set_configuration', data=io.StringIO(conf).read(),
+                                     headers={
+                "Content-Type": "application/json; charset=utf-8 "}
+            )
+            print(response.text)
+
+            # get configuration
+            response = requests.get(server+'configuration')
+            dictionary = response.json()
+            json_formatted_str = json.dumps(dictionary, indent=2)
+            print("Configuration:", json_formatted_str)
+
+        # ground
         response = requests.get(server+'ground')
         print(response.text)
 
-        response = requests.get(server+'solve')
+        # solve with assumptions
+        if args.assume:
+            assumptions = '[["queen(3,1)",true]]'  # works with queens.lp
+        else:
+            assumptions = '[]'
+        response = requests.post(server+'solve_with_assumptions', data=io.StringIO(assumptions).read(),
+                                 headers={
+            "Content-Type": "application/json; charset=utf-8 "}
+        )
         print(response.text)
 
+        # poll for models
         count = 0
         while True:
             response = requests.get(
@@ -120,29 +156,12 @@ def main():
         response = requests.get(server+'close')
         print(response.text)
 
-        response = requests.get(server+'statistics')
-        dictionary = response.json()
-        json_formatted_str = json.dumps(dictionary, indent=2)
-        print("Statistics:", json_formatted_str)
-
-        # get configuration
-        response = requests.get(server+'configuration')
-        dictionary = response.json()
-        json_formatted_str = json.dumps(dictionary, indent=2)
-        print("Configuration:", json_formatted_str)
-
-        # set configuration
-        response = requests.post(server+'set_configuration', data=io.StringIO(conf).read(),
-                                 headers={
-            "Content-Type": "application/json; charset=utf-8 "}
-        )
-        print(response.text)
-
-        # # get configuration
-        # response = requests.get(server+'configuration')
-        # dictionary = response.json()
-        # json_formatted_str = json.dumps(dictionary, indent=2)
-        # print("Configuration:", json_formatted_str)
+        # get statistics
+        if args.stats:
+            response = requests.get(server+'statistics')
+            dictionary = response.json()
+            json_formatted_str = json.dumps(dictionary, indent=2)
+            print("Statistics:", json_formatted_str)
 
     except Exception as e:
         print(e)
