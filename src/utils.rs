@@ -200,7 +200,7 @@ impl Solver {
                 msg: "Solver::create failed! Solver still running!",
             }),
             Solver::Control(_) => {
-                let mut ctl = control(arguments)?;
+                let ctl = control(arguments)?;
                 *self = Solver::Control(ControlWrapper::NoTheory(ctl));
                 Ok(())
             }
