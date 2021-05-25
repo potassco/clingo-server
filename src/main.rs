@@ -6,7 +6,7 @@ extern crate rocket;
 extern crate serde_derive;
 
 mod utils;
-use clingo::{Part, SolveMode};
+use clingo::{Part, SolveMode, Symbol};
 use rocket::{Data, State};
 use rocket_contrib::json::Json;
 use std::io::Read;
@@ -41,16 +41,22 @@ fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerErr
     solver.add("base", &[], &buf)?;
     Ok("Added data to Solver.".to_string())
 }
-#[get("/ground")]
-fn ground(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+#[post("/ground", format = "application/json", data = "<data>")]
+fn ground(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
     let mut solver = state
         .lock()
         .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
-    // ground the base part
-    let part = Part::new("base", &[]).map_err(|_| ServerError::InternalError {
-        msg: "NulError while trying to create base Part",
+
+    let mut buf = String::new();
+    let mut ds = data.open();
+    ds.read_to_string(&mut buf)?;
+    let val = serde_json::from_str(&buf).map_err(|_| ServerError::InternalError {
+        msg: "Could not parse json data",
     })?;
-    let parts = vec![part];
+
+    let parts = json_to_parts(&val)?;
+
+    // ground the parts
     solver.ground(&parts)?;
     Ok("Grounding.".to_string())
 }
@@ -187,6 +193,52 @@ fn json_to_configuration_result(val: &Value) -> Result<ConfigurationResult, Serv
             }
             Ok(ConfigurationResult::Map(arr))
         }
+    }
+}
+
+fn json_to_symbol(val: &Value) -> Result<Symbol, ServerError> {
+    match val {
+        Value::String(s) => {
+            let sym = clingo::parse_term(s)?;
+            Ok(sym)
+        }
+        _ => Err(ServerError::InternalError {
+            msg: "Could not parse symbol data",
+        }),
+    }
+}
+fn json_to_symbol_array(val: &Value) -> Result<Vec<Symbol>, ServerError> {
+    match val {
+        Value::Array(a) => {
+            let mut arr = Vec::with_capacity(a.len());
+            for val in a {
+                let x = json_to_symbol(val)?;
+                arr.push(x)
+            }
+            Ok(arr)
+        }
+        _ => Err(ServerError::InternalError {
+            msg: "Could not parse parts data",
+        }),
+    }
+}
+
+fn json_to_parts(val: &Value) -> Result<Vec<Part>, ServerError> {
+    match val {
+        Value::Object(m) => {
+            let mut parts = Vec::with_capacity(m.len());
+            for (e, val) in m {
+                let x = json_to_symbol_array(val)?;
+                let part = Part::new(e, &x).map_err(|_| ServerError::InternalError {
+                    msg: "NulError while trying to create Part",
+                })?;
+                parts.push(part)
+            }
+            Ok(parts)
+        }
+        _ => Err(ServerError::InternalError {
+            msg: "Could not parse parts data",
+        }),
     }
 }
 fn json_to_assumptions(val: &Value) -> Result<Vec<(clingo::Symbol, bool)>, ServerError> {

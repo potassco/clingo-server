@@ -67,6 +67,9 @@ def main():
 
         parser.add_argument('--assume',  action='store_true', required=False,
                             help='assume queen(3,1) to be true')
+
+        parser.add_argument('--pigeon',  action='store_true', required=False,
+                            help='use with pigeon example to pass parameters')
         args = parser.parse_args()
 
         response = requests.get(server)
@@ -108,7 +111,14 @@ def main():
             print("Configuration:", json_formatted_str)
 
         # ground
-        response = requests.get(server+'ground')
+        part = '{"base": []}'
+        if args.pigeon:
+            part = '{"pigeon": ["4", "4"]}'
+
+        response = requests.post(server+'ground', data=io.StringIO(part).read(),
+                                 headers={
+            "Content-Type": "application/json; charset=utf-8 "}
+        )
         print(response.text)
 
         # solve with assumptions
