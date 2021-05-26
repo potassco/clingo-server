@@ -29,7 +29,6 @@ fn create(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
     solver.create(vec!["0".to_string()])?;
     Ok("Created clingo Solver.".to_string())
 }
-// #[post("/add", format = "plain", data = "<data>")]
 #[post("/add", data = "<data>")]
 fn add(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
     let mut solver = state
@@ -55,7 +54,6 @@ fn ground(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, Server
     })?;
 
     let parts = json_to_parts(&val)?;
-
     // ground the parts
     solver.ground(&parts)?;
     Ok("Grounding.".to_string())
@@ -195,7 +193,6 @@ fn json_to_configuration_result(val: &Value) -> Result<ConfigurationResult, Serv
         }
     }
 }
-
 fn json_to_symbol(val: &Value) -> Result<Symbol, ServerError> {
     match val {
         Value::String(s) => {
@@ -229,7 +226,7 @@ fn json_to_parts(val: &Value) -> Result<Vec<Part>, ServerError> {
             let mut parts = Vec::with_capacity(m.len());
             for (e, val) in m {
                 let x = json_to_symbol_array(val)?;
-                let part = Part::new(e, &x).map_err(|_| ServerError::InternalError {
+                let part = Part::new(e, x).map_err(|_| ServerError::InternalError {
                     msg: "NulError while trying to create Part",
                 })?;
                 parts.push(part)

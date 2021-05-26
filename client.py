@@ -68,8 +68,8 @@ def main():
         parser.add_argument('--assume',  action='store_true', required=False,
                             help='assume queen(3,1) to be true')
 
-        parser.add_argument('--pigeon',  action='store_true', required=False,
-                            help='use with pigeon example to pass parameters')
+        parser.add_argument('--pigeons',  action='store_true', required=False,
+                            help='add parmeters for the pigeon example holes=3 pigeons=2')
         args = parser.parse_args()
 
         response = requests.get(server)
@@ -112,8 +112,8 @@ def main():
 
         # ground
         part = '{"base": []}'
-        if args.pigeon:
-            part = '{"pigeon": ["4", "4"]}'
+        if args.pigeons:
+            part = '{"pigeon": ["3", "2"]}'
 
         response = requests.post(server+'ground', data=io.StringIO(part).read(),
                                  headers={
