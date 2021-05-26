@@ -1,5 +1,6 @@
 use super::rocket;
 
+use rocket::http::ContentType;
 use rocket::http::Status;
 use rocket::local::Client;
 use serde_json::Value;
@@ -22,7 +23,11 @@ fn test_create() {
     let mut response = client.post("/add").body("a.").dispatch();
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(response.body_string(), Some("Added data to Solver.".into()));
-    let mut response = client.get("/ground").dispatch();
+    let mut response = client
+        .post("/ground")
+        .header(ContentType::JSON)
+        .body("{\"base\":[]}")
+        .dispatch();
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(response.body_string(), Some("Grounding.".into()));
     let mut response = client.get("/solve").dispatch();
@@ -82,7 +87,11 @@ fn test_add() {
 #[test]
 fn test_ground() {
     let client = Client::new(rocket()).unwrap();
-    let mut response = client.get("/ground").dispatch();
+    let mut response = client
+        .post("/ground")
+        .header(ContentType::JSON)
+        .body("{\"base\":[]}")
+        .dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.body_string().unwrap();
     let data: Value = serde_json::from_str(&data).unwrap();
