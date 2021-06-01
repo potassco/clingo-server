@@ -5,8 +5,12 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_derive;
 
+mod convert;
 mod utils;
-use clingo::{Part, SolveMode, Symbol};
+use clingo::SolveMode;
+use convert::{
+    json_to_assignment, json_to_assumptions, json_to_configuration_result, json_to_parts,
+};
 use rocket::{Data, State};
 use rocket_contrib::json::Json;
 use std::io::Read;
@@ -57,6 +61,24 @@ fn ground(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, Server
     // ground the parts
     solver.ground(&parts)?;
     Ok("Grounding.".to_string())
+}
+
+#[post("/assign_external", format = "application/json", data = "<data>")]
+fn assign_external(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
+
+    let mut buf = String::new();
+    let mut ds = data.open();
+    ds.read_to_string(&mut buf)?;
+    let val = serde_json::from_str(&buf).map_err(|_| ServerError::InternalError {
+        msg: "Could not parse json data",
+    })?;
+
+    let assignment = json_to_assignment(&val)?;
+    solver.assign_external(&assignment)?;
+    Ok("External assigned.".to_string())
 }
 #[get("/solve")]
 fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
@@ -162,124 +184,6 @@ fn set_configuration(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<Str
     Ok("Set configuration.".to_string())
 }
 
-use serde_json::Value;
-fn json_to_configuration_result(val: &Value) -> Result<ConfigurationResult, ServerError> {
-    match val {
-        Value::String(s) => Ok(ConfigurationResult::Value(s.clone())),
-        Value::Null => Err(ServerError::InternalError {
-            msg: "Could not parse configuration data",
-        }),
-        Value::Bool(_) => Err(ServerError::InternalError {
-            msg: "Could not parse configuration data",
-        }),
-        Value::Number(_) => Err(ServerError::InternalError {
-            msg: "Could not parse configuration data",
-        }),
-        Value::Array(a) => {
-            let mut arr = Vec::with_capacity(a.len());
-            for val in a {
-                let x = json_to_configuration_result(val)?;
-                arr.push(x)
-            }
-            Ok(ConfigurationResult::Array(arr))
-        }
-        Value::Object(m) => {
-            let mut arr = Vec::with_capacity(m.len());
-            for (e, val) in m {
-                let x = json_to_configuration_result(val)?;
-                arr.push((e.clone(), x))
-            }
-            Ok(ConfigurationResult::Map(arr))
-        }
-    }
-}
-fn json_to_symbol(val: &Value) -> Result<Symbol, ServerError> {
-    match val {
-        Value::String(s) => {
-            let sym = clingo::parse_term(s)?;
-            Ok(sym)
-        }
-        _ => Err(ServerError::InternalError {
-            msg: "Could not parse symbol data",
-        }),
-    }
-}
-fn json_to_symbol_array(val: &Value) -> Result<Vec<Symbol>, ServerError> {
-    match val {
-        Value::Array(a) => {
-            let mut arr = Vec::with_capacity(a.len());
-            for val in a {
-                let x = json_to_symbol(val)?;
-                arr.push(x)
-            }
-            Ok(arr)
-        }
-        _ => Err(ServerError::InternalError {
-            msg: "Could not parse parts data",
-        }),
-    }
-}
-
-fn json_to_parts(val: &Value) -> Result<Vec<Part>, ServerError> {
-    match val {
-        Value::Object(m) => {
-            let mut parts = Vec::with_capacity(m.len());
-            for (e, val) in m {
-                let x = json_to_symbol_array(val)?;
-                let part = Part::new(e, x).map_err(|_| ServerError::InternalError {
-                    msg: "NulError while trying to create Part",
-                })?;
-                parts.push(part)
-            }
-            Ok(parts)
-        }
-        _ => Err(ServerError::InternalError {
-            msg: "Could not parse parts data",
-        }),
-    }
-}
-fn json_to_assumptions(val: &Value) -> Result<Vec<(clingo::Symbol, bool)>, ServerError> {
-    match val {
-        Value::Array(a) => {
-            let mut arr = Vec::with_capacity(a.len());
-            for val in a {
-                let val = match val {
-                    Value::Array(a) => {
-                        let name = match a.get(0) {
-                            Some(Value::String(s)) => s,
-                            _ => {
-                                return Err(ServerError::InternalError {
-                                    msg: "Could not parse assumptions data",
-                                })
-                            }
-                        };
-                        let sym = clingo::parse_term(&name)?;
-
-                        let sign = match a.get(1) {
-                            Some(Value::Bool(b)) => *b,
-                            _ => {
-                                return Err(ServerError::InternalError {
-                                    msg: "Could not parse assumptions data",
-                                })
-                            }
-                        };
-                        (sym, sign)
-                    }
-                    _ => {
-                        return Err(ServerError::InternalError {
-                            msg: "Could not parse assumptions data",
-                        })
-                    }
-                };
-                arr.push(val)
-            }
-            Ok(arr)
-        }
-        _ => Err(ServerError::InternalError {
-            msg: "Could not parse assumptions data",
-        }),
-    }
-}
 fn rocket() -> rocket::Rocket {
     let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::None));
     rocket::ignite().manage(state).mount(
@@ -289,6 +193,7 @@ fn rocket() -> rocket::Rocket {
             create,
             add,
             ground,
+            assign_external,
             solve,
             model,
             resume,

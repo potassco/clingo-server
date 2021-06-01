@@ -1,7 +1,7 @@
 use clingo::{
     ast, control, dl_theory::DLTheory, ClingoError, Configuration, ConfigurationType, Control, Id,
     Literal, Model, Part, ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode,
-    Statistics, StatisticsType, Symbol, SymbolicAtoms,
+    Statistics, StatisticsType, Symbol, SymbolicAtoms, TruthValue,
 };
 type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
 use clingo::theory::Theory;
@@ -172,6 +172,28 @@ impl ControlWrapper {
             ControlWrapper::NoTheory(ctl) => ctl.symbolic_atoms(),
         }
     }
+    pub fn assign_external<'a>(
+        &mut self,
+        symbol: &Symbol,
+        truth_value: &TruthValue,
+    ) -> Result<(), ServerError> {
+        // get the program literal corresponding to the external atom
+        let atoms = self.symbolic_atoms()?;
+        let mut atm_it = atoms.iter()?;
+        let item =
+            atm_it
+                .find(|e| e.symbol().unwrap() == *symbol)
+                .ok_or(ServerError::InternalError {
+                    msg: "external symbol not found",
+                })?;
+        let atm = item.literal()?;
+        eprintln!("{:?},{:?}", atm, truth_value);
+        match self {
+            ControlWrapper::DLTheory(ctl, _) => ctl.assign_external(atm, *truth_value),
+            ControlWrapper::NoTheory(ctl) => ctl.assign_external(atm, *truth_value),
+        }?;
+        Ok(())
+    }
 }
 pub enum SolveHandleWrapper {
     DLTheory(DLSolveHandle, Rc<RefCell<DLTheory>>),
@@ -205,6 +227,39 @@ impl Solver {
                 Ok(())
             }
         }
+    }
+    pub fn register_dl_theory(&mut self) -> Result<(), ServerError> {
+        let x = self.take();
+        match x {
+            Solver::None => {
+                return Err(ServerError::InternalError {
+                    msg: "Solver::register_dl_theory failed! No control object.",
+                })
+            }
+            Solver::SolveHandle(_) => {
+                *self = x;
+                return Err(ServerError::InternalError {
+                    msg: "Solver::register_dl_theory failed! Solver has been already started.",
+                });
+            }
+            Solver::Control(ControlWrapper::DLTheory(mut ctl, _)) => {
+                let mut dl_theory = DLTheory::create();
+                dl_theory.register(&mut ctl);
+                *self = Solver::Control(ControlWrapper::DLTheory(
+                    ctl,
+                    Rc::new(RefCell::new(dl_theory)),
+                ));
+            }
+            Solver::Control(ControlWrapper::NoTheory(mut ctl)) => {
+                let mut dl_theory = DLTheory::create();
+                dl_theory.register(&mut ctl);
+                *self = Solver::Control(ControlWrapper::DLTheory(
+                    ctl,
+                    Rc::new(RefCell::new(dl_theory)),
+                ));
+            }
+        };
+        Ok(())
     }
     pub fn close(&mut self) -> Result<(), ServerError> {
         let x = self.take();
@@ -306,38 +361,19 @@ impl Solver {
         };
         Ok(())
     }
-    pub fn register_dl_theory(&mut self) -> Result<(), ServerError> {
-        let x = self.take();
-        match x {
-            Solver::None => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::register_dl_theory failed! No control object.",
-                })
-            }
-            Solver::SolveHandle(_) => {
-                *self = x;
-                return Err(ServerError::InternalError {
-                    msg: "Solver::register_dl_theory failed! Solver has been already started.",
-                });
-            }
-            Solver::Control(ControlWrapper::DLTheory(mut ctl, _)) => {
-                let mut dl_theory = DLTheory::create();
-                dl_theory.register(&mut ctl);
-                *self = Solver::Control(ControlWrapper::DLTheory(
-                    ctl,
-                    Rc::new(RefCell::new(dl_theory)),
-                ));
-            }
-            Solver::Control(ControlWrapper::NoTheory(mut ctl)) => {
-                let mut dl_theory = DLTheory::create();
-                dl_theory.register(&mut ctl);
-                *self = Solver::Control(ControlWrapper::DLTheory(
-                    ctl,
-                    Rc::new(RefCell::new(dl_theory)),
-                ));
-            }
-        };
-        Ok(())
+    pub fn assign_external(
+        &mut self,
+        (symbol, truth_value): &(clingo::Symbol, clingo::TruthValue),
+    ) -> Result<(), ServerError> {
+        match self {
+            Solver::None => Err(ServerError::InternalError {
+                msg: "Solver::assign_external failed! No control object.",
+            }),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::assign_external failed! Solving has already started.",
+            }),
+            Solver::Control(ctl) => ctl.assign_external(symbol, truth_value),
+        }
     }
     pub fn statistics(&mut self) -> Result<StatisticsResult, ServerError> {
         match self {
