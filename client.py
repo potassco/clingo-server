@@ -70,6 +70,8 @@ def main():
 
         parser.add_argument('--pigeons',  action='store_true', required=False,
                             help='add parmeters for the pigeon example holes=3 pigeons=2')
+        parser.add_argument('--external',  action='store_true', required=False,
+                            help='assign external atom `enable` with True in the external example')
         args = parser.parse_args()
 
         response = requests.get(server)
@@ -121,6 +123,16 @@ def main():
         )
         print(response.text)
 
+        if args.external:
+            # set external atom 'enable' to True
+            # works with external_test.lp
+            assignment = '{"literal": "enable", "truth_value": "True"}'
+            response = requests.post(server+'assign_external', data=io.StringIO(assignment).read(),
+                                     headers={
+                "Content-Type": "application/json; charset=utf-8 "}
+            )
+            print(response.text)
+
         # solve with assumptions
         if args.assume:
             assumptions = '[["queen(3,1)",true]]'  # works with queens.lp
@@ -131,40 +143,7 @@ def main():
             "Content-Type": "application/json; charset=utf-8 "}
         )
         print(response.text)
-
-        # poll for models
-        count = 0
-        while True:
-            response = requests.get(
-                server+'model', timeout=1)
-
-            if response.status_code == 200:
-                json_response = response.json()
-
-                if json_response == 'Running':
-                    print("No model yet ... waiting 10 seconds.")
-                    time.sleep(10)
-                elif json_response == 'Done':
-                    print("Search finished, no more models.")
-                    break
-                elif 'Model' in json_response:
-                    model = json_response['Model']
-                    count += 1
-                    print("Model", count, ':')
-                    print(bytes(model).decode("utf-8"))
-                    response = requests.get(server+'resume')
-                    print(response.text)
-                else:
-                    print("Error unexpected response to model/ request")
-                    print(json_response)
-                    exit()
-            else:
-                print("ServerError")
-                print(response.text)
-                break
-
-        response = requests.get(server+'close')
-        print(response.text)
+        poll_models()
 
         # get statistics
         if args.stats:
@@ -177,6 +156,42 @@ def main():
         print(e)
         traceback.print_exception(*sys.exc_info())
         return 1
+
+
+def poll_models():
+    ''' poll for models '''
+    count = 0
+    while True:
+        response = requests.get(
+            server+'model', timeout=1)
+
+        if response.status_code == 200:
+            json_response = response.json()
+
+            if json_response == 'Running':
+                print("No model yet ... waiting 10 seconds.")
+                time.sleep(10)
+            elif json_response == 'Done':
+                print("Search finished, no more models.")
+                break
+            elif 'Model' in json_response:
+                model = json_response['Model']
+                count += 1
+                print("Model", count, ':')
+                print(bytes(model).decode("utf-8"))
+                response = requests.get(server+'resume')
+                print(response.text)
+            else:
+                print("Error unexpected response to model/ request")
+                print(json_response)
+                exit()
+        else:
+            print("ServerError")
+            print(response.text)
+            break
+
+    response = requests.get(server+'close')
+    print(response.text)
 
 
 if __name__ == '__main__':
