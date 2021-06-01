@@ -145,6 +145,16 @@ def main():
         print(response.text)
         poll_models()
 
+        if args.external:
+            # release external atom 'enable'
+            # works with external_test.lp
+            atom = '"enable"'
+            response = requests.post(server+'release_external', data=io.StringIO(atom).read(),
+                                     headers={
+                "Content-Type": "application/json; charset=utf-8 "}
+            )
+            print(response.text)
+
         # get statistics
         if args.stats:
             response = requests.get(server+'statistics')

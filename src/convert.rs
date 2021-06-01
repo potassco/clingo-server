@@ -32,7 +32,7 @@ pub fn json_to_configuration_result(val: &Value) -> Result<ConfigurationResult, 
         }
     }
 }
-fn json_to_symbol(val: &Value) -> Result<Symbol, ServerError> {
+pub fn json_to_symbol(val: &Value) -> Result<Symbol, ServerError> {
     match val {
         Value::String(s) => {
             let sym = clingo::parse_term(s)?;
