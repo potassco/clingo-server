@@ -10,6 +10,7 @@ mod utils;
 use clingo::SolveMode;
 use convert::{
     json_to_assignment, json_to_assumptions, json_to_configuration_result, json_to_parts,
+    json_to_symbol,
 };
 use rocket::{Data, State};
 use rocket_contrib::json::Json;
@@ -79,6 +80,23 @@ fn assign_external(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<Strin
     let assignment = json_to_assignment(&val)?;
     solver.assign_external(&assignment)?;
     Ok("External assigned.".to_string())
+}
+#[post("/release_external", format = "application/json", data = "<data>")]
+fn release_external(state: State<Arc<Mutex<Solver>>>, data: Data) -> Result<String, ServerError> {
+    let mut solver = state
+        .lock()
+        .map_err(|_| ServerError::InternalError { msg: "PoisonError" })?;
+
+    let mut buf = String::new();
+    let mut ds = data.open();
+    ds.read_to_string(&mut buf)?;
+    let val = serde_json::from_str(&buf).map_err(|_| ServerError::InternalError {
+        msg: "Could not parse json data",
+    })?;
+
+    let symbol = json_to_symbol(&val)?;
+    solver.release_external(&symbol)?;
+    Ok("External released.".to_string())
 }
 #[get("/solve")]
 fn solve(state: State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
@@ -194,6 +212,7 @@ fn rocket() -> rocket::Rocket {
             add,
             ground,
             assign_external,
+            release_external,
             solve,
             model,
             resume,

@@ -187,10 +187,26 @@ impl ControlWrapper {
                     msg: "external symbol not found",
                 })?;
         let atm = item.literal()?;
-        eprintln!("{:?},{:?}", atm, truth_value);
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.assign_external(atm, *truth_value),
             ControlWrapper::NoTheory(ctl) => ctl.assign_external(atm, *truth_value),
+        }?;
+        Ok(())
+    }
+    pub fn release_external<'a>(&mut self, symbol: &Symbol) -> Result<(), ServerError> {
+        // get the program literal corresponding to the external atom
+        let atoms = self.symbolic_atoms()?;
+        let mut atm_it = atoms.iter()?;
+        let item =
+            atm_it
+                .find(|e| e.symbol().unwrap() == *symbol)
+                .ok_or(ServerError::InternalError {
+                    msg: "external symbol not found",
+                })?;
+        let atm = item.literal()?;
+        match self {
+            ControlWrapper::DLTheory(ctl, _) => ctl.release_external(atm),
+            ControlWrapper::NoTheory(ctl) => ctl.release_external(atm),
         }?;
         Ok(())
     }
@@ -373,6 +389,17 @@ impl Solver {
                 msg: "Solver::assign_external failed! Solving has already started.",
             }),
             Solver::Control(ctl) => ctl.assign_external(symbol, truth_value),
+        }
+    }
+    pub fn release_external(&mut self, symbol: &Symbol) -> Result<(), ServerError> {
+        match self {
+            Solver::None => Err(ServerError::InternalError {
+                msg: "Solver::release_external failed! No control object.",
+            }),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
+                msg: "Solver::release_external failed! Solving has already started.",
+            }),
+            Solver::Control(ctl) => ctl.release_external(symbol),
         }
     }
     pub fn statistics(&mut self) -> Result<StatisticsResult, ServerError> {
