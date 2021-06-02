@@ -1,10 +1,13 @@
 use clingo::{
-    ast, control, dl_theory::DLTheory, ClingoError, Configuration, ConfigurationType, Control, Id,
-    Literal, Model, Part, ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode,
-    Statistics, StatisticsType, Symbol, SymbolicAtoms, TruthValue,
+    ast, control, ClingoError, Configuration, ConfigurationType, Control, Id, Literal, Model, Part,
+    ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode, Statistics, StatisticsType,
+    Symbol, SymbolicAtoms, TruthValue,
 };
+use clingo_dl_plugin::DLTheory;
 type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
 use clingo::theory::Theory;
+use libloading::Library;
+use libloading::Symbol as LibSymbol;
 use rocket::response::{self, Responder};
 use rocket_contrib::json::Json;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
@@ -144,6 +147,7 @@ pub enum Solver {
 }
 pub enum ControlWrapper {
     DLTheory(Control, Rc<RefCell<DLTheory>>),
+    // DLTheory(Control, Rc<RefCell<DLTheory>>, Rc<RefCell<Library>>),
     NoTheory(Control),
 }
 impl ControlWrapper {
@@ -259,12 +263,23 @@ impl Solver {
                 });
             }
             Solver::Control(ControlWrapper::DLTheory(mut ctl, _)) => {
-                let mut dl_theory = DLTheory::create();
-                dl_theory.register(&mut ctl);
-                *self = Solver::Control(ControlWrapper::DLTheory(
-                    ctl,
-                    Rc::new(RefCell::new(dl_theory)),
-                ));
+                let library_path = "clingodl";
+                println!("Loading add() from {}", library_path);
+                //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
+                let lib = Library::new(library_path).unwrap();
+                type PluginCreate = unsafe fn() -> DLTheory;
+                unsafe {
+                    let constructor: LibSymbol<PluginCreate> = lib
+                        .get(b"create")
+                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
+                    let mut dl_theory = constructor();
+                    dl_theory.register(&mut ctl);
+
+                    *self = Solver::Control(ControlWrapper::DLTheory(
+                        ctl,
+                        Rc::new(RefCell::new(dl_theory)),
+                    ));
+                }
             }
             Solver::Control(ControlWrapper::NoTheory(mut ctl)) => {
                 let mut dl_theory = DLTheory::create();
