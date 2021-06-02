@@ -7,6 +7,7 @@ use clingo::{
     FunctionHandler, GenericControl, GroundProgramObserver, Id, Logger, Model, Options, Propagator,
     Statistics, Symbol,
 };
+use clingo_sys::{clingo_ast, clingo_control};
 use std::ptr::NonNull;
 
 #[derive(Debug)]
@@ -45,7 +46,7 @@ impl<'a> Iterator for DLTheoryAssignment<'a> {
         if !unsafe {
             clingo_dl_sys::clingodl_assignment_next(
                 self.dl_theory.theory.as_ptr(),
-                self.thread_id.0,
+                self.thread_id.into(),
                 &mut self.index,
             )
         } {
@@ -53,14 +54,14 @@ impl<'a> Iterator for DLTheoryAssignment<'a> {
         } else if unsafe {
             clingo_dl_sys::clingodl_assignment_has_value(
                 self.dl_theory.theory.as_ptr(),
-                self.thread_id.0,
+                self.thread_id.into(),
                 self.index,
             )
         } {
-            let sym = unsafe {
+            let sym: clingo_sys::clingo_symbol_t = unsafe {
                 clingo_dl_sys::clingodl_get_symbol(self.dl_theory.theory.as_ptr(), self.index)
             };
-            let sym = Symbol(sym);
+            let sym = sym.into();
             let value_internal = clingo_dl_sys::clingodl_value__bindgen_ty_1 { int_number: 0 };
             let mut value = clingo_dl_sys::clingodl_value {
                 type_: 0,
@@ -69,7 +70,7 @@ impl<'a> Iterator for DLTheoryAssignment<'a> {
             unsafe {
                 clingo_dl_sys::clingodl_assignment_get_value(
                     self.dl_theory.theory.as_ptr(),
-                    self.thread_id.0,
+                    self.thread_id.into(),
                     self.index,
                     &mut value,
                 )
@@ -83,10 +84,10 @@ impl<'a> Iterator for DLTheoryAssignment<'a> {
                     sym,
                     TheoryValue::DoubleNumber(unsafe { value.__bindgen_anon_1.double_number }),
                 )),
-                2 => Some((
-                    sym,
-                    TheoryValue::Symbol(Symbol(unsafe { value.__bindgen_anon_1.symbol })),
-                )),
+                2 => {
+                    let value = unsafe { value.__bindgen_anon_1.symbol };
+                    Some((sym, TheoryValue::Symbol(value.into())))
+                }
                 x => panic!("unexpected DLTheoryValue {}", x),
             }
         } else {
@@ -98,7 +99,11 @@ impl<'a> Theory<'a> for DLTheory {
     fn assignment(&'a self, thread_id: Id) -> Box<dyn Iterator<Item = (Symbol, TheoryValue)> + 'a> {
         let mut index = 0;
         unsafe {
-            clingo_dl_sys::clingodl_assignment_begin(self.theory.as_ptr(), thread_id.0, &mut index)
+            clingo_dl_sys::clingodl_assignment_begin(
+                self.theory.as_ptr(),
+                thread_id.into(),
+                &mut index,
+            )
         }
         Box::new(DLTheoryAssignment {
             dl_theory: self,
@@ -114,22 +119,24 @@ impl<'a> Theory<'a> for DLTheory {
         O: GroundProgramObserver,
         F: FunctionHandler,
     {
-        unsafe { clingo_dl_sys::clingodl_register(self.theory.as_ptr(), ctl.ctl.as_ptr()) }
+        let nn: NonNull<clingo_control> = ctl.into();
+        unsafe { clingo_dl_sys::clingodl_register(self.theory.as_ptr(), nn.as_ptr()) }
     }
     /// Rewrite statements before adding them via the given callback.
     fn rewrite_statement(
         &mut self,
-        stm: &ast::Statement,
+        stmt: &ast::Statement,
         builder: &mut ast::ProgramBuilder,
     ) -> bool {
         let add = unsafe_program_builder_add;
+        let nn: NonNull<clingo_ast> = stmt.into();
+        let pb: *mut clingo_sys::clingo_program_builder = builder.into();
         unsafe {
             clingo_dl_sys::clingodl_rewrite_ast(
                 self.theory.as_ptr(),
-                stm.ast.0.as_ptr(),
+                nn.as_ptr(),
                 Some(add),
-                (builder.theref as *mut clingo_sys::clingo_program_builder)
-                    as *mut ::std::os::raw::c_void,
+                pb as *mut ::std::os::raw::c_void,
             )
         }
     }
@@ -141,11 +148,12 @@ impl<'a> Theory<'a> for DLTheory {
         O: GroundProgramObserver,
         F: FunctionHandler,
     {
-        unsafe { clingo_dl_sys::clingodl_prepare(self.theory.as_ptr(), ctl.ctl.as_ptr()) }
+        let nn: NonNull<clingo_control> = ctl.into();
+        unsafe { clingo_dl_sys::clingodl_prepare(self.theory.as_ptr(), nn.as_ptr()) }
     }
     /// add options for your theory
     fn register_options(&mut self, options: &mut Options) -> bool {
-        unsafe { clingo_dl_sys::clingodl_register_options(self.theory.as_ptr(), &mut options.0) }
+        unsafe { clingo_dl_sys::clingodl_register_options(self.theory.as_ptr(), options.into()) }
     }
     /// validate options for your theory
     fn validate_options(&mut self) -> bool {
@@ -153,26 +161,27 @@ impl<'a> Theory<'a> for DLTheory {
     }
     /// callback on every model
     fn on_model(&mut self, model: &mut Model) -> bool {
-        unsafe { clingo_dl_sys::clingodl_on_model(self.theory.as_ptr(), &mut model.0) }
+        unsafe { clingo_dl_sys::clingodl_on_model(self.theory.as_ptr(), model.into()) }
     }
     /// callback on statistic updates
     /// please add a subkey with the name of your theory
     fn on_statistics(&mut self, step: &mut Statistics, accu: &mut Statistics) -> bool {
         unsafe {
-            clingo_dl_sys::clingodl_on_statistics(self.theory.as_ptr(), &mut step.0, &mut accu.0)
+            clingo_dl_sys::clingodl_on_statistics(self.theory.as_ptr(), step.into(), accu.into())
         }
     }
     /// obtain a symbol index which can be used to get the value of a symbol
     /// returns true if the symbol exists
     /// does not throw
     fn lookup_symbol(&mut self, symbol: Symbol, index: &mut usize) -> bool {
-        unsafe { clingo_dl_sys::clingodl_lookup_symbol(self.theory.as_ptr(), symbol.0, index) }
+        unsafe { clingo_dl_sys::clingodl_lookup_symbol(self.theory.as_ptr(), symbol.into(), index) }
     }
     /// obtain the symbol at the given index
     /// does not throw
     fn get_symbol(&mut self, index: usize) -> Symbol {
-        let sym = unsafe { clingo_dl_sys::clingodl_get_symbol(self.theory.as_ptr(), index) };
-        Symbol(sym)
+        let sym: clingo_sys::clingo_symbol_t =
+            unsafe { clingo_dl_sys::clingodl_get_symbol(self.theory.as_ptr(), index) };
+        sym.into()
     }
     /// configure theory manually (without using clingo's options facility)
     /// Note that the theory has to be configured before registering it and cannot be reconfigured.
