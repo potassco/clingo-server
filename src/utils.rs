@@ -9,14 +9,16 @@ use clingo::theory::Theory;
 use libloading::Library;
 use libloading::Symbol as LibSymbol;
 use rocket::response::{self, Responder};
-use rocket_contrib::json::Json;
+use rocket::serde::json::Json;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::cell::RefCell;
 use std::cmp;
+use std::fmt::Debug;
 use std::io;
 use std::io::{Read, Write};
 use std::rc::Rc;
 use thiserror::Error;
+
 #[derive(Error, Debug)]
 pub enum ServerError {
     #[error("ClingoError: ")]
@@ -26,8 +28,8 @@ pub enum ServerError {
     #[error("InternalError: {msg}")]
     InternalError { msg: &'static str },
 }
-impl Responder<'static> for ServerError {
-    fn respond_to(self, request: &Request<'_>) -> response::Result<'static> {
+impl<'r> Responder<'r, 'static> for ServerError {
+    fn respond_to(self, request: &'r Request<'_>) -> response::Result<'static> {
         let json = Json(self);
         json.respond_to(request)
     }
@@ -96,6 +98,7 @@ impl Serialize for StatisticsResult {
         }
     }
 }
+
 #[derive(Debug)]
 pub enum ConfigurationResult {
     Value(String),
@@ -627,10 +630,11 @@ static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// A type that represents a request's ID.
 pub struct RequestId(pub usize);
 /// Returns the current request's ID, assigning one only as necessary.
-impl<'a, 'r> FromRequest<'a, 'r> for &'a RequestId {
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for &'r RequestId {
     type Error = ();
 
-    fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // The closure passed to `local_cache` will be executed at most once per
         // request: the first time the `RequestId` guard is used. If it is
         // requested again, `local_cache` will return the same value.

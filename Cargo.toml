@@ -8,15 +8,12 @@ publish = false
 [dependencies]
 clingo = { version = "0.7.0-beta.1", git = "https://github.com/potassco/clingo-rs", branch = "st/plugin2" }
 clingo-dl-plugin = { git = "https://github.com/potassco/clingo-dl-theory-rs", branch = "main" }
-rocket = "0.4.7"
+rocket = { version = "0.5.0-rc.1", features = ["json"] }
+parking_lot = "0.11"
 thiserror = "1.0"
 libloading = "0.6"
 serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"
 
-[dependencies.rocket_contrib]
-version = "0.4.7"
-default-features = false
-features = ["json"]
 

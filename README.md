@@ -17,7 +17,7 @@ export LD_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
 Start the server with
 
 ```sh
-cargo +nightly run
+cargo run
 ```
 
 Test the server with
