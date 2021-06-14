@@ -11,6 +11,7 @@ use libloading::Symbol as LibSymbol;
 use rocket::response::{self, Responder};
 use rocket::serde::json::Json;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
+// use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::cmp;
 use std::fmt::Debug;
@@ -364,8 +365,9 @@ impl Solver {
                 })
             }
             Solver::Control(ControlWrapper::DLTheory(ctl, dl_theory)) => {
+                let mut bld = ast::ProgramBuilder::from(ctl)?;
                 let mut rewriter = Rewriter {
-                    control: ctl,
+                    builder: &mut bld,
                     theory: dl_theory.clone(),
                 };
                 // rewrite the program
@@ -644,80 +646,57 @@ impl<'r> FromRequest<'r> for &'r RequestId {
     }
 }
 pub struct Rewriter<'a> {
-    control: &'a mut Control,
+    builder: &'a mut ast::ProgramBuilder<'a>,
     theory: Rc<RefCell<DLTheory>>,
 }
 
 impl<'a> clingo::ast::StatementHandler for Rewriter<'a> {
     fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-        let mut builder = ast::ProgramBuilder::from(self.control).unwrap();
         self.theory
             .borrow_mut()
-            .rewrite_statement(stm, &mut builder)
+            .rewrite_statement(stm, &mut self.builder)
     }
+
+    // // adds head/body marker to `&diff` theory atoms
+    // fn on_statement(&mut self, stm: &ast::Statement) -> bool {
+    //     match stm.is_a().unwrap() {
+    //         ast::StatementIsA::Rule(rule) => {
+    //             let body = rule.body();
+    //             // initialize the rule
+    //             let head = rule.head();
+    //             // let rule = ast::rule(&loc, head, &extended_body).unwrap();
+
+    //             // add the rewritten rule to the program builder
+    //             self.builder
+    //                 .add(&rule.into())
+    //                 .expect("Failed to add Rule to ProgramBuilder.");
+    //         }
+    //         _ => {
+    //             // pass through all statements that are not rules
+    //             self.builder
+    //                 .add(&stm)
+    //                 .expect("Failed to add Statement to ProgramBuilder.");
+    //         }
+    //     }
+    //     true
+    // }
 }
-
-fn write_prefix(buf: &mut impl Write, depth: u8) {
-    writeln!(buf).unwrap();
-    for _ in 0..depth {
-        write!(buf, "  ").unwrap();
-    }
-}
-
-// recursively write the statistics object
-fn write_statistics(buf: &mut impl Write, stats: &Statistics, key: u64, depth: u8) {
-    // get the type of an entry and switch over its various values
-    let statistics_type = stats.statistics_type(key).unwrap();
-    match statistics_type {
-        // write values
-        StatisticsType::Value => {
-            let value = stats
-                .value_get(key)
-                .expect("Failed to retrieve statistics value.");
-            write!(buf, " {}", value).unwrap();
-        }
-
-        // write arrays
-        StatisticsType::Array => {
-            // loop over array elements
-            let size = stats
-                .array_size(key)
-                .expect("Failed to retrieve statistics array size.");
-            for i in 0..size {
-                // write array offset (with prefix for readability)
-                let subkey = stats
-                    .array_at(key, i)
-                    .expect("Failed to retrieve statistics array.");
-                write_prefix(buf, depth);
-                write!(buf, "{} zu:", i).unwrap();
-
-                // recursively write subentry
-                write_statistics(buf, stats, subkey, depth + 1);
+impl<'a> Rewriter<'a> {
+    fn on_head(&mut self, stm: ast::Head<'a>) -> ast::Head<'a> {
+        match stm.is_a().unwrap() {
+            ast::THead::TheoryAtom(theory_atom) => {
+                // let body = theory_atom.term();
+                theory_atom.into()
             }
-        }
 
-        // write maps
-        StatisticsType::Map => {
-            // loop over map elements
-            let size = stats.map_size(key).unwrap();
-            for i in 0..size {
-                // get and write map name (with prefix for readability)
-                let name = stats.map_subkey_name(key, i).unwrap();
-                let subkey = stats.map_at(key, name).unwrap();
-                write_prefix(buf, depth);
-                write!(buf, "{}:", name).unwrap();
-
-                // recursively write subentry
-                write_statistics(buf, stats, subkey, depth + 1);
-            }
-        }
-
-        // this case won't occur if the statistics are traversed like this
-        StatisticsType::Empty => {
-            writeln!(buf, "StatisticsType::Empty").unwrap();
+            ast::THead::Literal(literal) => literal.into(),
+            ast::THead::Aggregate(aggregate) => aggregate.into(),
+            ast::THead::HeadAggregate(head_aggregate) => head_aggregate.into(),
+            ast::THead::Disjunction(disjunction) => disjunction.into(),
         }
     }
 }
+
 // recursively parse the statistics object
 fn parse_statistics(stats: &Statistics, key: u64) -> Result<StatisticsResult, ClingoError> {
     // get the type of an entry and switch over its various values
@@ -762,58 +741,7 @@ fn parse_statistics(stats: &Statistics, key: u64) -> Result<StatisticsResult, Cl
         StatisticsType::Empty => Ok(StatisticsResult::Empty),
     }
 }
-fn print_prefix(depth: u8) {
-    println!();
-    for _ in 0..depth {
-        print!("  ");
-    }
-}
-// recursively print the configuartion object
-fn print_configuration(conf: &Configuration, key: Id, depth: u8) {
-    // get the type of an entry and switch over its various values
-    let configuration_type = conf.configuration_type(key).unwrap();
-    if configuration_type.contains(ConfigurationType::VALUE) {
-        // print values
 
-        let value = conf
-            .value_get(key)
-            .expect("Failed to retrieve statistics value.");
-
-        print!("{}", value);
-    } else if configuration_type.contains(ConfigurationType::ARRAY) {
-        // loop over array elements
-        let size = conf
-            .array_size(key)
-            .expect("Failed to retrieve statistics array size.");
-        for i in 0..size {
-            // print array offset (with prefix for readability)
-            let subkey = conf
-                .array_at(key, i)
-                .expect("Failed to retrieve statistics array.");
-            print_prefix(depth);
-            print!("{}: ", i);
-
-            // recursively print subentry
-            print_configuration(conf, subkey, depth + 1);
-        }
-    } else if configuration_type.contains(ConfigurationType::MAP) {
-        // loop over map elements
-        let size = conf.map_size(key).unwrap();
-        for i in 0..size {
-            // get and print map name (with prefix for readability)
-            let name = conf.map_subkey_name(key, i).unwrap();
-            let subkey = conf.map_at(key, name).unwrap();
-            print_prefix(depth);
-            print!("{}: ", name);
-
-            // recursively print subentry
-            print_configuration(conf, subkey, depth + 1);
-        }
-    } else {
-        eprintln!("Unknown ConfigurationType");
-        unreachable!()
-    }
-}
 // recursively parse the configuration object
 fn parse_configuration(conf: &Configuration, key: Id) -> Result<ConfigurationResult, ClingoError> {
     // get the type of an entry and switch over its various values
