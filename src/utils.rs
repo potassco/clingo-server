@@ -1,3 +1,4 @@
+use clingo::Location;
 use clingo::{
     ast, control, ClingoError, Configuration, ConfigurationType, Control, Id, Literal, Model, Part,
     ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode, Statistics, StatisticsType,
@@ -651,39 +652,43 @@ pub struct Rewriter<'a> {
 }
 
 impl<'a> clingo::ast::StatementHandler for Rewriter<'a> {
-    fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-        self.theory
-            .borrow_mut()
-            .rewrite_statement(stm, &mut self.builder)
-    }
-
-    // // adds head/body marker to `&diff` theory atoms
     // fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-    //     match stm.is_a().unwrap() {
-    //         ast::StatementIsA::Rule(rule) => {
-    //             let body = rule.body();
-    //             // initialize the rule
-    //             let head = rule.head();
-    //             // let rule = ast::rule(&loc, head, &extended_body).unwrap();
-
-    //             // add the rewritten rule to the program builder
-    //             self.builder
-    //                 .add(&rule.into())
-    //                 .expect("Failed to add Rule to ProgramBuilder.");
-    //         }
-    //         _ => {
-    //             // pass through all statements that are not rules
-    //             self.builder
-    //                 .add(&stm)
-    //                 .expect("Failed to add Statement to ProgramBuilder.");
-    //         }
-    //     }
-    //     true
+    // self.theory
+    // .borrow_mut()
+    // .rewrite_statement(stm, &mut self.builder)
     // }
+
+    // adds head/body marker to `&diff` theory atoms
+    fn on_statement(&mut self, stm: &ast::Statement) -> bool {
+        let stm_clone = stm.clone();
+        match stm_clone.is_a().unwrap() {
+            ast::StatementIsA::Rule(rule) => {
+                let body = rule.body();
+                // let new_body = [];
+                // initialize the rule
+                let head = rule.head();
+                // let new_head = self.rewrite_head(head);
+                // let rule = ast::rule(rule.location(), head, &new_body).unwrap();
+
+                // add the rewritten rule to the program builder
+                self.builder
+                    .add(&rule.into())
+                    .expect("Failed to add Rule to ProgramBuilder.");
+            }
+            _ => {
+                // pass through all statements that are not rules
+                self.builder
+                    .add(&stm)
+                    .expect("Failed to add Statement to ProgramBuilder.");
+            }
+        }
+        true
+    }
 }
 impl<'a> Rewriter<'a> {
-    fn on_head(&mut self, stm: ast::Head<'a>) -> ast::Head<'a> {
-        match stm.is_a().unwrap() {
+    fn rewrite_head(&self, head: &ast::Head<'a>) -> ast::Head<'a> {
+        let head_clone = head.clone();
+        match head_clone.is_a().unwrap() {
             ast::THead::TheoryAtom(theory_atom) => {
                 // let body = theory_atom.term();
                 theory_atom.into()
