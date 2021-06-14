@@ -1,4 +1,3 @@
-use clingo::Location;
 use clingo::{
     ast, control, ClingoError, Configuration, ConfigurationType, Control, Id, Literal, Model, Part,
     ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode, Statistics, StatisticsType,
@@ -12,12 +11,11 @@ use libloading::Symbol as LibSymbol;
 use rocket::response::{self, Responder};
 use rocket::serde::json::Json;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
-// use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::cmp;
 use std::fmt::Debug;
 use std::io;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::rc::Rc;
 use thiserror::Error;
 
@@ -652,55 +650,55 @@ pub struct Rewriter<'a> {
 }
 
 impl<'a> clingo::ast::StatementHandler for Rewriter<'a> {
-    // fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-    // self.theory
-    // .borrow_mut()
-    // .rewrite_statement(stm, &mut self.builder)
-    // }
-
-    // adds head/body marker to `&diff` theory atoms
     fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-        let stm_clone = stm.clone();
-        match stm_clone.is_a().unwrap() {
-            ast::StatementIsA::Rule(rule) => {
-                let body = rule.body();
-                // let new_body = [];
-                // initialize the rule
-                let head = rule.head();
-                // let new_head = self.rewrite_head(head);
-                // let rule = ast::rule(rule.location(), head, &new_body).unwrap();
-
-                // add the rewritten rule to the program builder
-                self.builder
-                    .add(&rule.into())
-                    .expect("Failed to add Rule to ProgramBuilder.");
-            }
-            _ => {
-                // pass through all statements that are not rules
-                self.builder
-                    .add(&stm)
-                    .expect("Failed to add Statement to ProgramBuilder.");
-            }
-        }
-        true
+        self.theory
+            .borrow_mut()
+            .rewrite_statement(stm, &mut self.builder)
     }
-}
-impl<'a> Rewriter<'a> {
-    fn rewrite_head(&self, head: &ast::Head<'a>) -> ast::Head<'a> {
-        let head_clone = head.clone();
-        match head_clone.is_a().unwrap() {
-            ast::THead::TheoryAtom(theory_atom) => {
-                // let body = theory_atom.term();
-                theory_atom.into()
-            }
 
-            ast::THead::Literal(literal) => literal.into(),
-            ast::THead::Aggregate(aggregate) => aggregate.into(),
-            ast::THead::HeadAggregate(head_aggregate) => head_aggregate.into(),
-            ast::THead::Disjunction(disjunction) => disjunction.into(),
-        }
-    }
+    // // adds head/body marker to `&diff` theory atoms
+    // fn on_statement(&mut self, stm: &ast::Statement) -> bool {
+    //     let stm_clone = stm.clone();
+    //     match stm_clone.is_a().unwrap() {
+    //         ast::StatementIsA::Rule(rule) => {
+    //             let body = rule.body();
+    //             // let new_body = [];
+    //             // initialize the rule
+    //             let head = rule.head().clone();
+    //             let new_head = self.rewrite_head(head);
+    //             // let rule = ast::rule(rule.location(), head, &new_body).unwrap();
+
+    //             // add the rewritten rule to the program builder
+    //             self.builder
+    //                 .add(&rule.into())
+    //                 .expect("Failed to add Rule to ProgramBuilder.");
+    //         }
+    //         _ => {
+    //             // pass through all statements that are not rules
+    //             self.builder
+    //                 .add(&stm)
+    //                 .expect("Failed to add Statement to ProgramBuilder.");
+    //         }
+    //     }
+    //     true
+    // }
 }
+// impl<'a> Rewriter<'a> {
+//     fn rewrite_head(&self, head: ast::Head<'a>) -> ast::Head<'a> {
+//         let head_clone = head.clone();
+//         match head_clone.is_a().unwrap() {
+//             ast::HeadIsA::TheoryAtom(theory_atom) => {
+//                 // let body = theory_atom.term();
+//                 theory_atom.into()
+//             }
+
+//             ast::HeadIsA::Literal(literal) => literal.into(),
+//             ast::HeadIsA::Aggregate(aggregate) => aggregate.into(),
+//             ast::HeadIsA::HeadAggregate(head_aggregate) => head_aggregate.into(),
+//             ast::HeadIsA::Disjunction(disjunction) => disjunction.into(),
+//         }
+//     }
+// }
 
 // recursively parse the statistics object
 fn parse_statistics(stats: &Statistics, key: u64) -> Result<StatisticsResult, ClingoError> {
