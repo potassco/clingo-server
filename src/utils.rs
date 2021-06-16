@@ -650,105 +650,13 @@ pub struct Rewriter<'a> {
 }
 
 impl<'a> clingo::ast::StatementHandler for Rewriter<'a> {
-    // fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-    //     self.theory
-    //         .borrow_mut()
-    //         .rewrite_statement(stm, &mut self.builder)
-    // }
-
-    // adds head/body marker to `&diff` theory atoms
     fn on_statement(&mut self, stm: &ast::Statement) -> bool {
-        let stm_clone = stm.clone();
-        match stm_clone.is_a().unwrap() {
-            ast::StatementIsA::Rule(rule) => {
-                debug!("statement is a rulle");
-                let loc = rule.location();
-                let body = rule.body();
-                let mut new_body = vec![];
-                for bl in body {
-                    new_body.push(rewrite_body_literal(bl));
-                }
-                // initialize the rule
-                let mut head = rule.head().clone();
-                let new_head = rewrite_head(&mut head);
-                let rule = ast::rule(&loc, new_head, &new_body).unwrap();
-                eprintln!("new rule {}", rule);
-
-                // add the rewritten rule to the program builder
-                self.builder
-                    .add(&rule.into())
-                    .expect("Failed to add Rule to ProgramBuilder.");
-            }
-            _ => {
-                // pass through all statements that are not rules
-                self.builder
-                    .add(&stm)
-                    .expect("Failed to add Statement to ProgramBuilder.");
-            }
-        }
-        true
+        self.theory
+            .borrow_mut()
+            .rewrite_statement(stm, &mut self.builder)
     }
 }
 
-fn rewrite_head<'a>(head: &mut ast::Head<'a>) -> ast::Head<'a> {
-    let head_clone = head.clone();
-    match head_clone.is_a().unwrap() {
-        ast::HeadIsA::TheoryAtom(theory_atom) => {
-            rewrite_theory_atom(theory_atom, Marker::Head).into()
-        }
-
-        ast::HeadIsA::Literal(literal) => literal.into(),
-        ast::HeadIsA::Aggregate(aggregate) => aggregate.into(),
-        ast::HeadIsA::HeadAggregate(head_aggregate) => head_aggregate.into(),
-        ast::HeadIsA::Disjunction(disjunction) => disjunction.into(),
-    }
-}
-fn rewrite_body_literal<'a>(bl: ast::BodyLiteral<'a>) -> ast::BodyLiteral<'a> {
-    let bl_clone = bl.clone();
-    match bl_clone.is_a().unwrap() {
-        ast::BodyLiteralIsA::CspLiteral(csp_literal) => csp_literal.into(),
-        ast::BodyLiteralIsA::Literal(literal) => literal.into(),
-        ast::BodyLiteralIsA::ConditionalLiteral(cond_literal) => cond_literal.into(),
-        ast::BodyLiteralIsA::TheoryAtom(theory_atom) => {
-            rewrite_theory_atom(theory_atom, Marker::Body).into()
-        }
-    }
-}
-#[derive(Debug, Clone, Copy)]
-enum Marker {
-    Head,
-    Body,
-}
-fn rewrite_theory_atom(ta: ast::TheoryAtom, marker: Marker) -> ast::TheoryAtom {
-    let mut ta_clone = ta.clone();
-    let term = ta.term();
-    let term_location = term.location();
-    match term.is_a().unwrap() {
-        ast::TermIsA::Function(function) => {
-            let name = function.name();
-            if name == "diff" {
-                match marker {
-                    Marker::Body => {
-                        let new_term =
-                            ast::function(&term_location, &"__diff_b", &[], false).unwrap();
-                        eprintln!("new term(function): {}", new_term.to_string().unwrap());
-                        ta_clone.set_term(new_term.into());
-                        eprintln!("new TheoryAtom: {:?}", ta_clone);
-                    }
-                    Marker::Head => {
-                        let new_term =
-                            ast::function(&term_location, &"__diff_h", &[], false).unwrap();
-                        eprintln!("new term(function): {}", new_term.to_string().unwrap());
-                        ta_clone.set_term(new_term.into());
-                        eprintln!("new TheoryAtom: {:?}", ta_clone);
-                    }
-                }
-            }
-        }
-        x => panic!("Unexpected variant {:?}", x),
-    }
-    ta_clone
-}
 /// recursively parse the statistics object
 fn parse_statistics(stats: &Statistics, key: u64) -> Result<StatisticsResult, ClingoError> {
     // get the type of an entry and switch over its various values
