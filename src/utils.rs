@@ -154,19 +154,19 @@ pub enum ControlWrapper {
     NoTheory(Control),
 }
 impl ControlWrapper {
-    fn configuration<'a>(&'a mut self) -> Result<&Configuration, ClingoError> {
+    fn configuration(&mut self) -> Result<&Configuration, ClingoError> {
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.configuration(),
             ControlWrapper::NoTheory(ctl) => ctl.configuration(),
         }
     }
-    fn configuration_mut<'a>(&'a mut self) -> Result<&mut Configuration, ClingoError> {
+    fn configuration_mut(&mut self) -> Result<&mut Configuration, ClingoError> {
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.configuration_mut(),
             ControlWrapper::NoTheory(ctl) => ctl.configuration_mut(),
         }
     }
-    fn statistics<'a>(&'a mut self) -> Result<&Statistics, ClingoError> {
+    fn statistics(&mut self) -> Result<&Statistics, ClingoError> {
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.statistics(),
             ControlWrapper::NoTheory(ctl) => ctl.statistics(),
@@ -179,7 +179,7 @@ impl ControlWrapper {
             ControlWrapper::NoTheory(ctl) => ctl.symbolic_atoms(),
         }
     }
-    pub fn assign_external<'a>(
+    pub fn assign_external(
         &mut self,
         symbol: &Symbol,
         truth_value: &TruthValue,
@@ -200,7 +200,7 @@ impl ControlWrapper {
         }?;
         Ok(())
     }
-    pub fn release_external<'a>(&mut self, symbol: &Symbol) -> Result<(), ServerError> {
+    pub fn release_external(&mut self, symbol: &Symbol) -> Result<(), ServerError> {
         // get the program literal corresponding to the external atom
         let atoms = self.symbolic_atoms()?;
         let mut atm_it = atoms.iter()?;
