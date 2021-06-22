@@ -6,11 +6,12 @@ Install clingo and clingo-dl development version
 conda install -c potassco/label/dev clingo clingo-dl
 ```
 
-Set paths to clingo and clingo-dl library `libclingo.so` `libclingo-dl.so`
+Set paths to clingo and other theory plugin libraries `libclingo.so`  `libclingo-dl.so` and `libclingcon.so`
 
 ```sh
 export CLINGO_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
 export CLINGO_DL_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
+export CLINGCON_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
 export LD_LIBRARY_PATH=~/miniconda3/envs/cl-server/lib
 ```
 
