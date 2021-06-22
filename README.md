@@ -1,9 +1,9 @@
 # clingo-server
 
-Install clingo and clingo-dl development version
+Install clingo, clingo-dl and clingcon development versions.
 
 ```sh
-conda install -c potassco/label/dev clingo clingo-dl
+conda install -c potassco/label/dev clingo clingo-dl clingcon
 ```
 
 Set paths to clingo and other theory plugin libraries `libclingo.so`  `libclingo-dl.so` and `libclingcon.so`
