@@ -6,12 +6,9 @@ edition = "2018"
 publish = false
 
 [dependencies]
-# clingo = { version = "0.7.0-beta.1", git = "https://github.com/potassco/clingo-rs", branch = "st/ast" }
-clingo = { path = "../clingo-rs"}
-# clingo-dl-plugin = { git = "https://github.com/potassco/clingo-dl-theory-rs", branch = "st/wip" }
-clingo-dl-plugin = { path = "../clingo-dl-theory-rs/clingo-dl-plugin" }
-# clingcon-plugin = { git = "https://github.com/potassco/clingcon-theory-rs", branch = "master" }
-clingcon-plugin = { path = "../clingcon-theory-rs/clingcon-plugin" }
+clingo = { version = "0.7.0-beta.1", git = "https://github.com/potassco/clingo-rs", branch = "st/ast" }
+clingo-dl-plugin = { git = "https://github.com/potassco/clingo-dl-theory-rs", branch = "st/wip" }
+clingcon-plugin = { git = "https://github.com/potassco/clingcon-theory-rs", branch = "master" }
 rocket = { version = "0.5.0-rc.1", features = ["json"] }
 parking_lot = "0.11"
 thiserror = "1.0"
