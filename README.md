@@ -24,19 +24,26 @@ cargo run
 Test the server with
 
 ```sh
-python client.py -i queens.lp
+python client.py -i queens.lp --assume
 ```
 
 or
 
 ```sh
-python client.py -i pigeonhole.lp
+python client.py -i pigeonhole.lp --pigeons
 ```
 
 or with dl constraints
 
 ```sh
-python client.py -i taskassignment.lp
+python client.py -i taskassignment.lp --theory-dl
 ```
+
+or with clingcon constraints
+
+```sh
+python client.py -i golomb.lp --theory-con
+```
+
 
 [API documentation](API.md)

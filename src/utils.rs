@@ -1,3 +1,4 @@
+use clingcon_plugin::ConTheory;
 use clingo::{
     ast, control, ClingoError, Configuration, ConfigurationType, Control, Id, Literal, Model, Part,
     ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode, Statistics, StatisticsType,
@@ -5,6 +6,7 @@ use clingo::{
 };
 use clingo_dl_plugin::DLTheory;
 type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
+type ConSolveHandle = SolveHandleWithEventHandler<ConEventHandler>;
 use clingo::theory::Theory;
 use libloading::Library;
 use libloading::Symbol as LibSymbol;
@@ -143,6 +145,20 @@ impl clingo::SolveEventHandler for DLEventHandler {
         }
     }
 }
+pub struct ConEventHandler {
+    theory: Rc<RefCell<ConTheory>>,
+}
+impl clingo::SolveEventHandler for ConEventHandler {
+    fn on_solve_event(&mut self, event: clingo::SolveEvent<'_>, goon: &mut bool) -> bool {
+        match event {
+            clingo::SolveEvent::Model(model) => self.theory.borrow_mut().on_model(model),
+            clingo::SolveEvent::Statistics { step, akku } => {
+                self.theory.borrow_mut().on_statistics(step, akku)
+            }
+            _ => true,
+        }
+    }
+}
 pub enum Solver {
     None,
     Control(ControlWrapper),
@@ -151,24 +167,28 @@ pub enum Solver {
 pub enum ControlWrapper {
     DLTheory(Control, Rc<RefCell<DLTheory>>),
     // DLTheory(Control, Rc<RefCell<DLTheory>>, Rc<RefCell<Library>>),
+    ConTheory(Control, Rc<RefCell<ConTheory>>),
     NoTheory(Control),
 }
 impl ControlWrapper {
     fn configuration(&mut self) -> Result<&Configuration, ClingoError> {
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.configuration(),
+            ControlWrapper::ConTheory(ctl, _) => ctl.configuration(),
             ControlWrapper::NoTheory(ctl) => ctl.configuration(),
         }
     }
     fn configuration_mut(&mut self) -> Result<&mut Configuration, ClingoError> {
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.configuration_mut(),
+            ControlWrapper::ConTheory(ctl, _) => ctl.configuration_mut(),
             ControlWrapper::NoTheory(ctl) => ctl.configuration_mut(),
         }
     }
     fn statistics(&mut self) -> Result<&Statistics, ClingoError> {
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.statistics(),
+            ControlWrapper::ConTheory(ctl, _) => ctl.statistics(),
             ControlWrapper::NoTheory(ctl) => ctl.statistics(),
         }
     }
@@ -176,6 +196,7 @@ impl ControlWrapper {
     pub fn symbolic_atoms<'a>(&self) -> Result<&'a SymbolicAtoms, ClingoError> {
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.symbolic_atoms(),
+            ControlWrapper::ConTheory(ctl, _) => ctl.symbolic_atoms(),
             ControlWrapper::NoTheory(ctl) => ctl.symbolic_atoms(),
         }
     }
@@ -196,6 +217,7 @@ impl ControlWrapper {
         let atm = item.literal()?;
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.assign_external(atm, *truth_value),
+            ControlWrapper::ConTheory(ctl, _) => ctl.assign_external(atm, *truth_value),
             ControlWrapper::NoTheory(ctl) => ctl.assign_external(atm, *truth_value),
         }?;
         Ok(())
@@ -213,6 +235,7 @@ impl ControlWrapper {
         let atm = item.literal()?;
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.release_external(atm),
+            ControlWrapper::ConTheory(ctl, _) => ctl.release_external(atm),
             ControlWrapper::NoTheory(ctl) => ctl.release_external(atm),
         }?;
         Ok(())
@@ -220,6 +243,7 @@ impl ControlWrapper {
 }
 pub enum SolveHandleWrapper {
     DLTheory(DLSolveHandle, Rc<RefCell<DLTheory>>),
+    ConTheory(ConSolveHandle, Rc<RefCell<ConTheory>>),
     NoTheory(SolveHandle),
 }
 impl Default for Solver {
@@ -284,12 +308,94 @@ impl Solver {
                     ));
                 }
             }
+            Solver::Control(ControlWrapper::ConTheory(mut ctl, _)) => {
+                let library_path = "clingodl";
+                println!("Loading add() from {}", library_path);
+                //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
+                let lib = Library::new(library_path).unwrap();
+                type PluginCreate = unsafe fn() -> DLTheory;
+                unsafe {
+                    let constructor: LibSymbol<PluginCreate> = lib
+                        .get(b"create")
+                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
+                    let mut dl_theory = constructor();
+                    dl_theory.register(&mut ctl);
+
+                    *self = Solver::Control(ControlWrapper::DLTheory(
+                        ctl,
+                        Rc::new(RefCell::new(dl_theory)),
+                    ));
+                }
+            }
             Solver::Control(ControlWrapper::NoTheory(mut ctl)) => {
                 let mut dl_theory = DLTheory::create();
                 dl_theory.register(&mut ctl);
                 *self = Solver::Control(ControlWrapper::DLTheory(
                     ctl,
                     Rc::new(RefCell::new(dl_theory)),
+                ));
+            }
+        };
+        Ok(())
+    }
+    pub fn register_con_theory(&mut self) -> Result<(), ServerError> {
+        let x = self.take();
+        match x {
+            Solver::None => {
+                return Err(ServerError::InternalError {
+                    msg: "Solver::register_con_theory failed! No control object.",
+                })
+            }
+            Solver::SolveHandle(_) => {
+                *self = x;
+                return Err(ServerError::InternalError {
+                    msg: "Solver::register_con_theory failed! Solver has been already started.",
+                });
+            }
+            Solver::Control(ControlWrapper::DLTheory(mut ctl, _)) => {
+                let library_path = "clingcon";
+                println!("Loading add() from {}", library_path);
+                //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
+                let lib = Library::new(library_path).unwrap();
+                type PluginCreate = unsafe fn() -> ConTheory;
+                unsafe {
+                    let constructor: LibSymbol<PluginCreate> = lib
+                        .get(b"create")
+                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
+                    let mut con_theory = constructor();
+                    con_theory.register(&mut ctl);
+
+                    *self = Solver::Control(ControlWrapper::ConTheory(
+                        ctl,
+                        Rc::new(RefCell::new(con_theory)),
+                    ));
+                }
+            }
+            Solver::Control(ControlWrapper::ConTheory(mut ctl, _)) => {
+                let library_path = "clingcon";
+                println!("Loading add() from {}", library_path);
+                //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
+                let lib = Library::new(library_path).unwrap();
+                type PluginCreate = unsafe fn() -> ConTheory;
+                unsafe {
+                    let constructor: LibSymbol<PluginCreate> = lib
+                        .get(b"create")
+                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
+                    let mut con_theory = constructor();
+                    con_theory.register(&mut ctl);
+
+                    *self = Solver::Control(ControlWrapper::ConTheory(
+                        ctl,
+                        Rc::new(RefCell::new(con_theory)),
+                    ));
+                }
+            }
+            Solver::Control(ControlWrapper::NoTheory(mut ctl)) => {
+                let mut con_theory = ConTheory::create();
+                con_theory.register(&mut ctl);
+                *self = Solver::Control(ControlWrapper::ConTheory(
+                    ctl,
+                    Rc::new(RefCell::new(con_theory)),
                 ));
             }
         };
@@ -311,6 +417,9 @@ impl Solver {
             }
             Solver::SolveHandle(SolveHandleWrapper::DLTheory(handle, dl_theory)) => {
                 *self = Solver::Control(ControlWrapper::DLTheory(handle.close()?, dl_theory));
+            }
+            Solver::SolveHandle(SolveHandleWrapper::ConTheory(handle, con_theory)) => {
+                *self = Solver::Control(ControlWrapper::ConTheory(handle.close()?, con_theory));
             }
             Solver::SolveHandle(SolveHandleWrapper::NoTheory(handle)) => {
                 *self = Solver::Control(ControlWrapper::NoTheory(handle.close()?));
@@ -342,7 +451,21 @@ impl Solver {
                     dl_theory,
                 ));
             }
-            _ => eprintln!("Unimplemented TheoryVariant."),
+            Solver::Control(ControlWrapper::ConTheory(ctl, con_theory)) => {
+                let on_model = ConEventHandler {
+                    theory: con_theory.clone(),
+                };
+
+                *self = Solver::SolveHandle(SolveHandleWrapper::ConTheory(
+                    ctl.solve_with_event_handler(mode, assumptions, on_model)?,
+                    con_theory,
+                ));
+            }
+            Solver::Control(ControlWrapper::NoTheory(ctl)) => {
+                *self = Solver::SolveHandle(SolveHandleWrapper::NoTheory(
+                    ctl.solve(mode, assumptions)?,
+                ));
+            }
         };
         Ok(())
     }
@@ -372,7 +495,18 @@ impl Solver {
                 // rewrite the program
                 clingo::ast::parse_string_with_statement_handler(program, &mut rewriter)?;
             }
-            _ => eprintln!("Unimplemented TheoryVariant."),
+            Solver::Control(ControlWrapper::ConTheory(ctl, con_theory)) => {
+                let mut bld = ast::ProgramBuilder::from(ctl)?;
+                let mut rewriter = ConRewriter {
+                    builder: &mut bld,
+                    theory: con_theory.clone(),
+                };
+                // rewrite the program
+                clingo::ast::parse_string_with_statement_handler(program, &mut rewriter)?;
+            }
+            Solver::Control(ControlWrapper::NoTheory(ctl)) => {
+                ctl.add(name, parameters, program)?;
+            }
         };
         Ok(())
     }
@@ -392,7 +526,13 @@ impl Solver {
                 ctl.ground(parts)?;
                 dl_theory.borrow_mut().prepare(ctl);
             }
-            _ => eprintln!("Unimplemented TheoryVariant."),
+            Solver::Control(ControlWrapper::ConTheory(ctl, con_theory)) => {
+                ctl.ground(parts)?;
+                con_theory.borrow_mut().prepare(ctl);
+            }
+            Solver::Control(ControlWrapper::NoTheory(ctl)) => {
+                ctl.ground(parts)?;
+            }
         };
         Ok(())
     }
@@ -538,6 +678,28 @@ impl Solver {
                     Ok(ModelResult::Running)
                 }
             }
+            Solver::SolveHandle(SolveHandleWrapper::ConTheory(handle, con_theory)) => {
+                if handle.wait(0.0) {
+                    match handle.model_mut() {
+                        Ok(Some(model)) => {
+                            // dl_theory.on_model(model);
+                            let mut buf = vec![];
+                            write_model(model, &mut buf)?;
+                            // TODO rewrite write_dl_theory_assignment to use boxed iterator
+                            write_con_theory_assignment(
+                                con_theory.borrow_mut().assignment(model.thread_id()?),
+                                &mut buf,
+                            )?;
+
+                            Ok(ModelResult::Model(buf))
+                        }
+                        Ok(None) => Ok(ModelResult::Done),
+                        Err(e) => Err(e.into()),
+                    }
+                } else {
+                    Ok(ModelResult::Running)
+                }
+            }
             Solver::SolveHandle(SolveHandleWrapper::NoTheory(handle)) => {
                 if handle.wait(0.0) {
                     match handle.model_mut() {
@@ -567,6 +729,10 @@ impl Solver {
                 handle.resume()?;
                 Ok(())
             }
+            Solver::SolveHandle(SolveHandleWrapper::ConTheory(handle, _)) => {
+                handle.resume()?;
+                Ok(())
+            }
             Solver::SolveHandle(SolveHandleWrapper::NoTheory(handle)) => {
                 handle.resume()?;
                 Ok(())
@@ -587,11 +753,20 @@ pub fn write_model(model: &Model, mut out: impl io::Write) -> Result<(), io::Err
     }
     Ok(())
 }
-pub fn write_dl_theory_assignment<'a>(
+fn write_dl_theory_assignment<'a>(
     dl_theory_assignment: Box<dyn Iterator<Item = (Symbol, clingo::theory::TheoryValue)> + 'a>,
     mut out: impl io::Write,
 ) -> Result<(), io::Error> {
     for (symbol, theory_value) in dl_theory_assignment {
+        writeln!(out, "{}={}", symbol, theory_value)?;
+    }
+    Ok(())
+}
+pub fn write_con_theory_assignment<'a>(
+    con_theory_assignment: Box<dyn Iterator<Item = (Symbol, clingo::theory::TheoryValue)> + 'a>,
+    mut out: impl io::Write,
+) -> Result<(), io::Error> {
+    for (symbol, theory_value) in con_theory_assignment {
         writeln!(out, "{}={}", symbol, theory_value)?;
     }
     Ok(())
@@ -648,8 +823,18 @@ pub struct Rewriter<'a> {
     builder: &'a mut ast::ProgramBuilder<'a>,
     theory: Rc<RefCell<DLTheory>>,
 }
-
 impl<'a> clingo::ast::StatementHandler for Rewriter<'a> {
+    fn on_statement(&mut self, stm: &ast::Statement) -> bool {
+        self.theory
+            .borrow_mut()
+            .rewrite_statement(stm, &mut self.builder)
+    }
+}
+pub struct ConRewriter<'a> {
+    builder: &'a mut ast::ProgramBuilder<'a>,
+    theory: Rc<RefCell<ConTheory>>,
+}
+impl<'a> clingo::ast::StatementHandler for ConRewriter<'a> {
     fn on_statement(&mut self, stm: &ast::Statement) -> bool {
         self.theory
             .borrow_mut()
