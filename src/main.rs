@@ -136,6 +136,12 @@ fn register_dl_theory(state: &State<Arc<Mutex<Solver>>>) -> Result<String, Serve
     solver.register_dl_theory()?;
     Ok("Difference logic theory registered.".to_string())
 }
+#[get("/register_con_theory")]
+fn register_con_theory(state: &State<Arc<Mutex<Solver>>>) -> Result<String, ServerError> {
+    let mut solver = state.lock();
+    solver.register_con_theory()?;
+    Ok("Clingcon theory registered.".to_string())
+}
 #[get("/statistics")]
 fn statistics(state: &State<Arc<Mutex<Solver>>>) -> Result<Json<StatisticsResult>, ServerError> {
     let mut solver = state.lock();
@@ -190,7 +196,8 @@ fn rocket() -> _ {
             configuration,
             set_configuration,
             solve_with_assumptions,
-            register_dl_theory
+            register_dl_theory,
+            register_con_theory
         ],
     )
 }
