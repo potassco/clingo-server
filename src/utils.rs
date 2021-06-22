@@ -263,17 +263,18 @@ impl Solver {
         match self {
             Solver::None => {
                 *self = Solver::Control(ControlWrapper::NoTheory(control(arguments)?));
-                Ok(())
             }
-            Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::create failed! Solver still running!",
-            }),
+            Solver::SolveHandle(_) => {
+                return Err(ServerError::InternalError {
+                    msg: "Solver::create failed! Solver still running!",
+                })
+            }
             Solver::Control(_) => {
                 let ctl = control(arguments)?;
                 *self = Solver::Control(ControlWrapper::NoTheory(ctl));
-                Ok(())
             }
         }
+        Ok(())
     }
     pub fn register_dl_theory(&mut self) -> Result<(), ServerError> {
         let x = self.take();
@@ -582,7 +583,7 @@ impl Solver {
             Solver::None => Err(ServerError::InternalError {
                 msg: "Solver::configuration failed! No control object.",
             }),
-            Solver::SolveHandle(__) => Err(ServerError::InternalError {
+            Solver::SolveHandle(_) => Err(ServerError::InternalError {
                 msg: "Solver::configuration failed! Solving has already started.",
             }),
             Solver::Control(ctl) => {
