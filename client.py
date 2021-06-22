@@ -72,6 +72,14 @@ def main():
                             help='add parmeters for the pigeon example holes=3 pigeons=2')
         parser.add_argument('--external',  action='store_true', required=False,
                             help='assign external atom `enable` with True in the external example')
+
+        parser.add_argument(
+            '--theory-dl',  action='store_true', required=False,
+            help='load DL theory')
+
+        parser.add_argument(
+            '--theory-con',  action='store_true', required=False,
+            help='load clingcon theory')
         args = parser.parse_args()
 
         response = requests.get(server)
@@ -87,8 +95,12 @@ def main():
             print(response.text)
 
         # register theory
-        response = requests.get(server+'register_dl_theory')
-        print(response.text)
+        if args.theory_dl:
+            response = requests.get(server+'register_dl_theory')
+            print(response.text)
+        if args.theory_con:
+            response = requests.get(server+'register_con_theory')
+            print(response.text)
 
         # add logic program
         with open(args.input, 'rb') as f:
