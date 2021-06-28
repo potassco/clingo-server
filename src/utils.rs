@@ -294,9 +294,10 @@ impl Solver {
                 let library_path = "clingodl";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                let lib = Library::new(library_path).unwrap();
-                type PluginCreate = unsafe fn() -> DLTheory;
                 unsafe {
+                    let lib = Library::new(library_path).unwrap();
+                    type PluginCreate = unsafe fn() -> DLTheory;
+
                     let constructor: LibSymbol<PluginCreate> = lib
                         .get(b"create")
                         .map_err(|_| ServerError::InternalError { msg: "booo" })?;
@@ -313,9 +314,9 @@ impl Solver {
                 let library_path = "clingodl";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                let lib = Library::new(library_path).unwrap();
-                type PluginCreate = unsafe fn() -> DLTheory;
                 unsafe {
+                    let lib = Library::new(library_path).unwrap();
+                    type PluginCreate = unsafe fn() -> DLTheory;
                     let constructor: LibSymbol<PluginCreate> = lib
                         .get(b"create")
                         .map_err(|_| ServerError::InternalError { msg: "booo" })?;
@@ -357,9 +358,9 @@ impl Solver {
                 let library_path = "clingcon";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                let lib = Library::new(library_path).unwrap();
-                type PluginCreate = unsafe fn() -> ConTheory;
                 unsafe {
+                    let lib = Library::new(library_path).unwrap();
+                    type PluginCreate = unsafe fn() -> ConTheory;
                     let constructor: LibSymbol<PluginCreate> = lib
                         .get(b"create")
                         .map_err(|_| ServerError::InternalError { msg: "booo" })?;
@@ -376,9 +377,9 @@ impl Solver {
                 let library_path = "clingcon";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                let lib = Library::new(library_path).unwrap();
-                type PluginCreate = unsafe fn() -> ConTheory;
                 unsafe {
+                    let lib = Library::new(library_path).unwrap();
+                    type PluginCreate = unsafe fn() -> ConTheory;
                     let constructor: LibSymbol<PluginCreate> = lib
                         .get(b"create")
                         .map_err(|_| ServerError::InternalError { msg: "booo" })?;
