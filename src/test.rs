@@ -56,10 +56,6 @@ fn test_create() {
     assert_eq!(response.into_string(), Some("Solve handle closed.".into()));
     let response = client.get("/statistics").dispatch();
     assert_eq!(response.status(), Status::Ok);
-    // assert_eq!(
-    //     response.body_string(),
-    //     Some("InternalError: Solver::solve failed! No control object.".into())
-    // );
 }
 #[test]
 fn test_register_dl_theory() {
@@ -67,11 +63,9 @@ fn test_register_dl_theory() {
     let response = client.get("/register_dl_theory").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        &data["msg"],
-        "Solver::register_dl_theory failed! No control object."
+        &data,
+        "{\"InternalError\":\"Solver::register_dl_theory failed! No control object.\"}"
     );
 }
 #[test]
@@ -80,9 +74,10 @@ fn test_add() {
     let response = client.post("/add").body("body.").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
-    assert_eq!(&data["msg"], "Solver::add failed! No control object.");
+    assert_eq!(
+        &data,
+        "{\"InternalError\":\"Solver::add failed! No control object.\"}"
+    );
 }
 #[test]
 fn test_ground() {
@@ -94,9 +89,10 @@ fn test_ground() {
         .dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
-    assert_eq!(&data["msg"], "Solver::ground failed! No control object.");
+    assert_eq!(
+        &data,
+        "{\"InternalError\":\"Solver::ground failed! No control object.\"}"
+    );
 }
 #[test]
 fn test_solve() {
@@ -104,9 +100,10 @@ fn test_solve() {
     let response = client.get("/solve").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
-    assert_eq!(&data["msg"], "Solver::solve failed! No control object.");
+    assert_eq!(
+        &data,
+        "{\"InternalError\":\"Solver::solve failed! No control object.\"}"
+    );
 }
 #[test]
 fn test_model() {
@@ -114,11 +111,9 @@ fn test_model() {
     let response = client.get("/model").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        data["msg"],
-        Value::String("Solver::model failed! No SolveHandle.".to_string())
+        &data,
+        "{\"InternalError\":\"Solver::model failed! No SolveHandle.\"}"
     );
 }
 #[test]
@@ -127,11 +122,9 @@ fn test_resume() {
     let response = client.get("/resume").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        data["msg"],
-        Value::String("Solver::resume failed! No SolveHandle.".to_string())
+        &data,
+        "{\"InternalError\":\"Solver::resume failed! No SolveHandle.\"}"
     );
 }
 #[test]
@@ -140,11 +133,9 @@ fn test_close() {
     let response = client.get("/close").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        data["msg"],
-        Value::String("Solver::close failed! Solver is not running.".to_string())
+        &data,
+        "{\"InternalError\":\"Solver::close failed! Solver is not running.\"}"
     );
 }
 #[test]
@@ -153,10 +144,8 @@ fn test_statistics() {
     let response = client.get("/statistics").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let data = response.into_string().unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
-    assert_eq!(data["type"], "InternalError");
     assert_eq!(
-        &data["msg"],
-        "Solver::statistics failed! No control object."
+        &data,
+        "{\"InternalError\":\"Solver::statistics failed! No control object.\"}"
     );
 }
