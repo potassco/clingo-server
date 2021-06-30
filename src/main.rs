@@ -194,7 +194,6 @@ fn rocket() -> _ {
         .mount(
             "/",
             routes![
-                index,
                 create,
                 add,
                 ground,
@@ -212,5 +211,12 @@ fn rocket() -> _ {
                 register_con_theory
             ],
         )
-        .mount("/swagger", make_swagger_ui(&get_docs()))
+        .mount("/", routes_with_openapi![index])
+        .mount(
+            "/swagger-ui/",
+            make_swagger_ui(&SwaggerUIConfig {
+                url: "../openapi.json".to_owned(),
+                ..Default::default()
+            }),
+        )
 }
