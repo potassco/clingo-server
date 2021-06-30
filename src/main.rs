@@ -42,9 +42,8 @@ async fn add(state: &State<Arc<Mutex<Solver>>>, data: Data<'_>) -> Result<String
 async fn ground(state: &State<Arc<Mutex<Solver>>>, data: Data<'_>) -> Result<String, ServerError> {
     let ds = data.open(512.kibibytes());
     let cap = ds.into_string().await?;
-    let val = serde_json::from_str(&cap.into_inner()).map_err(|_| ServerError::InternalError {
-        msg: "Could not parse json data",
-    })?;
+    let val = serde_json::from_str(&cap.into_inner())
+        .map_err(|e| ServerError::InternalError(format!("Could not parse json data {}", e)))?;
 
     let parts = json_to_parts(&val)?;
     // ground the parts
@@ -59,9 +58,8 @@ async fn assign_external(
 ) -> Result<String, ServerError> {
     let ds = data.open(512.kibibytes());
     let cap = ds.into_string().await?;
-    let val = serde_json::from_str(&cap.into_inner()).map_err(|_| ServerError::InternalError {
-        msg: "Could not parse json data",
-    })?;
+    let val = serde_json::from_str(&cap.into_inner())
+        .map_err(|e| ServerError::InternalError(format!("Could not parse json data {}", e)))?;
 
     let assignment = json_to_assignment(&val)?;
     let mut solver = state.lock();
@@ -75,9 +73,8 @@ async fn release_external(
 ) -> Result<String, ServerError> {
     let ds = data.open(512.kibibytes());
     let cap = ds.into_string().await?;
-    let val = serde_json::from_str(&cap.into_inner()).map_err(|_| ServerError::InternalError {
-        msg: "Could not parse json data",
-    })?;
+    let val = serde_json::from_str(&cap.into_inner())
+        .map_err(|e| ServerError::InternalError(format!("Could not parse json data {}", e)))?;
 
     let symbol = json_to_symbol(&val)?;
     let mut solver = state.lock();
@@ -101,9 +98,8 @@ async fn solve_with_assumptions(
 ) -> Result<String, ServerError> {
     let ds = data.open(512.kibibytes());
     let cap = ds.into_string().await?;
-    let val = serde_json::from_str(&cap.into_inner()).map_err(|_| ServerError::InternalError {
-        msg: "Could not parse json data",
-    })?;
+    let val = serde_json::from_str(&cap.into_inner())
+        .map_err(|e| ServerError::InternalError(format!("Could not parse json data {}", e)))?;
 
     let assumptions = json_to_assumptions(&val)?;
     let mut solver = state.lock();
@@ -167,9 +163,8 @@ async fn set_configuration(
 ) -> Result<String, ServerError> {
     let ds = data.open(512.kibibytes());
     let cap = ds.into_string().await?;
-    let val = serde_json::from_str(&cap.into_inner()).map_err(|_| ServerError::InternalError {
-        msg: "Could not parse json data",
-    })?;
+    let val = serde_json::from_str(&cap.into_inner())
+        .map_err(|e| ServerError::InternalError(format!("Could not parse json data {}", e)))?;
 
     let c = json_to_configuration_result(&val)?;
     let mut solver = state.lock();

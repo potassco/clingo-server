@@ -8,8 +8,6 @@ use clingo_dl_plugin::DLTheory;
 type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
 type ConSolveHandle = SolveHandleWithEventHandler<ConEventHandler>;
 use clingo::theory::Theory;
-use libloading::Library;
-use libloading::Symbol as LibSymbol;
 use rocket::response::{self, Responder};
 use rocket::serde::json::Json;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
@@ -27,8 +25,8 @@ pub enum ServerError {
     ClingoError(#[from] ClingoError),
     #[error("ioError: ")]
     IOError(#[from] io::Error),
-    #[error("InternalError: {msg}")]
-    InternalError { msg: &'static str },
+    #[error("InternalError:")]
+    InternalError(String),
 }
 impl<'r> Responder<'r, 'static> for ServerError {
     fn respond_to(self, request: &'r Request<'_>) -> response::Result<'static> {
@@ -51,12 +49,17 @@ impl Serialize for ServerError {
                 s.serialize_field("type", "IoError")?;
                 s.serialize_field("msg", &format!("{}", e))?;
             }
-            ServerError::InternalError { msg } => {
+            ServerError::InternalError(msg) => {
                 s.serialize_field("type", "InternalError")?;
-                s.serialize_field("msg", *msg)?;
+                s.serialize_field("msg", msg)?;
             }
         };
         s.end()
+    }
+}
+impl From<libloading::Error> for ServerError {
+    fn from(e: libloading::Error) -> Self {
+        ServerError::InternalError(format!("{}", e))
     }
 }
 #[derive(Debug, Serialize)]
@@ -208,12 +211,9 @@ impl ControlWrapper {
         // get the program literal corresponding to the external atom
         let atoms = self.symbolic_atoms()?;
         let mut atm_it = atoms.iter()?;
-        let item =
-            atm_it
-                .find(|e| e.symbol().unwrap() == *symbol)
-                .ok_or(ServerError::InternalError {
-                    msg: "external symbol not found",
-                })?;
+        let item = atm_it
+            .find(|e| e.symbol().unwrap() == *symbol)
+            .ok_or_else(|| ServerError::InternalError("external symbol not found".to_string()))?;
         let atm = item.literal()?;
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.assign_external(atm, *truth_value),
@@ -226,12 +226,9 @@ impl ControlWrapper {
         // get the program literal corresponding to the external atom
         let atoms = self.symbolic_atoms()?;
         let mut atm_it = atoms.iter()?;
-        let item =
-            atm_it
-                .find(|e| e.symbol().unwrap() == *symbol)
-                .ok_or(ServerError::InternalError {
-                    msg: "external symbol not found",
-                })?;
+        let item = atm_it
+            .find(|e| e.symbol().unwrap() == *symbol)
+            .ok_or_else(|| ServerError::InternalError("external symbol not found".to_string()))?;
         let atm = item.literal()?;
         match self {
             ControlWrapper::DLTheory(ctl, _) => ctl.release_external(atm),
@@ -265,9 +262,9 @@ impl Solver {
                 *self = Solver::Control(ControlWrapper::NoTheory(control(arguments)?));
             }
             Solver::SolveHandle(_) => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::create failed! Solver still running!",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::create failed! Solver still running!".to_string(),
+                ))
             }
             Solver::Control(_) => {
                 let ctl = control(arguments)?;
@@ -280,54 +277,46 @@ impl Solver {
         let x = self.take();
         match x {
             Solver::None => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::register_dl_theory failed! No control object.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::register_dl_theory failed! No control object.".to_string(),
+                ))
             }
             Solver::SolveHandle(_) => {
                 *self = x;
-                return Err(ServerError::InternalError {
-                    msg: "Solver::register_dl_theory failed! Solver has been already started.",
-                });
+                return Err(ServerError::InternalError(
+                    "Solver::register_dl_theory failed! Solver has been already started."
+                        .to_string(),
+                ));
             }
             Solver::Control(ControlWrapper::DLTheory(mut ctl, _)) => {
                 let library_path = "clingodl";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                unsafe {
-                    let lib = Library::new(library_path).unwrap();
-                    type PluginCreate = unsafe fn() -> DLTheory;
+                let lib = unsafe { libloading::Library::new(library_path) }?;
+                let create: libloading::Symbol<unsafe fn() -> DLTheory> =
+                    unsafe { lib.get(b"create") }?;
+                let mut dl_theory = unsafe { create() };
+                dl_theory.register(&mut ctl);
 
-                    let constructor: LibSymbol<PluginCreate> = lib
-                        .get(b"create")
-                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
-                    let mut dl_theory = constructor();
-                    dl_theory.register(&mut ctl);
-
-                    *self = Solver::Control(ControlWrapper::DLTheory(
-                        ctl,
-                        Rc::new(RefCell::new(dl_theory)),
-                    ));
-                }
+                *self = Solver::Control(ControlWrapper::DLTheory(
+                    ctl,
+                    Rc::new(RefCell::new(dl_theory)),
+                ));
             }
             Solver::Control(ControlWrapper::ConTheory(mut ctl, _)) => {
                 let library_path = "clingodl";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                unsafe {
-                    let lib = Library::new(library_path).unwrap();
-                    type PluginCreate = unsafe fn() -> DLTheory;
-                    let constructor: LibSymbol<PluginCreate> = lib
-                        .get(b"create")
-                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
-                    let mut dl_theory = constructor();
-                    dl_theory.register(&mut ctl);
+                let lib = unsafe { libloading::Library::new(library_path) }?;
+                let create: libloading::Symbol<unsafe fn() -> DLTheory> =
+                    unsafe { lib.get(b"create") }?;
+                let mut dl_theory = unsafe { create() };
+                dl_theory.register(&mut ctl);
 
-                    *self = Solver::Control(ControlWrapper::DLTheory(
-                        ctl,
-                        Rc::new(RefCell::new(dl_theory)),
-                    ));
-                }
+                *self = Solver::Control(ControlWrapper::DLTheory(
+                    ctl,
+                    Rc::new(RefCell::new(dl_theory)),
+                ));
             }
             Solver::Control(ControlWrapper::NoTheory(mut ctl)) => {
                 let mut dl_theory = DLTheory::create();
@@ -344,53 +333,48 @@ impl Solver {
         let x = self.take();
         match x {
             Solver::None => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::register_con_theory failed! No control object.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::register_con_theory failed! No control object.".to_string(),
+                ))
             }
             Solver::SolveHandle(_) => {
                 *self = x;
-                return Err(ServerError::InternalError {
-                    msg: "Solver::register_con_theory failed! Solver has been already started.",
-                });
+                return Err(ServerError::InternalError(
+                    "Solver::register_con_theory failed! Solver has been already started."
+                        .to_string(),
+                ));
             }
             Solver::Control(ControlWrapper::DLTheory(mut ctl, _)) => {
                 let library_path = "clingcon";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                unsafe {
-                    let lib = Library::new(library_path).unwrap();
-                    type PluginCreate = unsafe fn() -> ConTheory;
-                    let constructor: LibSymbol<PluginCreate> = lib
-                        .get(b"create")
-                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
-                    let mut con_theory = constructor();
-                    con_theory.register(&mut ctl);
+                let lib = unsafe { libloading::Library::new(library_path) }?;
+                let create: libloading::Symbol<unsafe fn() -> ConTheory> =
+                    unsafe { lib.get(b"create") }?;
+                let mut con_theory = unsafe { create() };
+                con_theory.register(&mut ctl);
 
-                    *self = Solver::Control(ControlWrapper::ConTheory(
-                        ctl,
-                        Rc::new(RefCell::new(con_theory)),
-                    ));
-                }
+                *self = Solver::Control(ControlWrapper::ConTheory(
+                    ctl,
+                    Rc::new(RefCell::new(con_theory)),
+                ));
             }
             Solver::Control(ControlWrapper::ConTheory(mut ctl, _)) => {
                 let library_path = "clingcon";
                 println!("Loading add() from {}", library_path);
                 //Loads the library and gets a symbol (casting the function pointer so it has the desired signature)
-                unsafe {
-                    let lib = Library::new(library_path).unwrap();
-                    type PluginCreate = unsafe fn() -> ConTheory;
-                    let constructor: LibSymbol<PluginCreate> = lib
-                        .get(b"create")
-                        .map_err(|_| ServerError::InternalError { msg: "booo" })?;
-                    let mut con_theory = constructor();
-                    con_theory.register(&mut ctl);
 
-                    *self = Solver::Control(ControlWrapper::ConTheory(
-                        ctl,
-                        Rc::new(RefCell::new(con_theory)),
-                    ));
-                }
+                let lib = unsafe { libloading::Library::new(library_path) }?;
+                let create: libloading::Symbol<unsafe fn() -> ConTheory> =
+                    unsafe { lib.get(b"create") }?;
+                let mut con_theory = unsafe { create() };
+
+                con_theory.register(&mut ctl);
+
+                *self = Solver::Control(ControlWrapper::ConTheory(
+                    ctl,
+                    Rc::new(RefCell::new(con_theory)),
+                ));
             }
             Solver::Control(ControlWrapper::NoTheory(mut ctl)) => {
                 let mut con_theory = ConTheory::create();
@@ -407,15 +391,15 @@ impl Solver {
         let x = self.take();
         match x {
             Solver::None => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::close failed! Solver is not running.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::close failed! Solver is not running.".to_string(),
+                ))
             }
             Solver::Control(_) => {
                 *self = x;
-                return Err(ServerError::InternalError {
-                    msg: "Solver::close failed! Solver is not running.",
-                });
+                return Err(ServerError::InternalError(
+                    "Solver::close failed! Solver is not running.".to_string(),
+                ));
             }
             Solver::SolveHandle(SolveHandleWrapper::DLTheory(handle, dl_theory)) => {
                 *self = Solver::Control(ControlWrapper::DLTheory(handle.close()?, dl_theory));
@@ -433,15 +417,15 @@ impl Solver {
         let x = self.take();
         match x {
             Solver::None => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::solve failed! No control object.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::solve failed! No control object.".to_string(),
+                ))
             }
             Solver::SolveHandle(_) => {
                 *self = x;
-                return Err(ServerError::InternalError {
-                    msg: "Solver::solve failed! DLSolving has already started.",
-                });
+                return Err(ServerError::InternalError(
+                    "Solver::solve failed! DLSolving has already started.".to_string(),
+                ));
             }
             Solver::Control(ControlWrapper::DLTheory(ctl, dl_theory)) => {
                 let on_model = DLEventHandler {
@@ -479,14 +463,14 @@ impl Solver {
     ) -> Result<(), ServerError> {
         match self {
             Solver::None => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::add failed! No control object.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::add failed! No control object.".to_string(),
+                ))
             }
             Solver::SolveHandle(_) => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::add failed! Solver has been already started.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::add failed! Solver has been already started.".to_string(),
+                ))
             }
             Solver::Control(ControlWrapper::DLTheory(ctl, dl_theory)) => {
                 let mut bld = ast::ProgramBuilder::from(ctl)?;
@@ -515,14 +499,14 @@ impl Solver {
     pub fn ground(&mut self, parts: &[Part]) -> Result<(), ServerError> {
         match self {
             Solver::None => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::ground failed! No control object.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::ground failed! No control object.".to_string(),
+                ))
             }
             Solver::SolveHandle(_) => {
-                return Err(ServerError::InternalError {
-                    msg: "Solver::ground failed! Solver has been already started.",
-                })
+                return Err(ServerError::InternalError(
+                    "Solver::ground failed! Solver has been already started.".to_string(),
+                ))
             }
             Solver::Control(ControlWrapper::DLTheory(ctl, dl_theory)) => {
                 ctl.ground(parts)?;
@@ -543,34 +527,34 @@ impl Solver {
         (symbol, truth_value): &(clingo::Symbol, clingo::TruthValue),
     ) -> Result<(), ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::assign_external failed! No control object.",
-            }),
-            Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::assign_external failed! Solving has already started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::assign_external failed! No control object.".to_string(),
+            )),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError(
+                "Solver::assign_external failed! Solving has already started.".to_string(),
+            )),
             Solver::Control(ctl) => ctl.assign_external(symbol, truth_value),
         }
     }
     pub fn release_external(&mut self, symbol: &Symbol) -> Result<(), ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::release_external failed! No control object.",
-            }),
-            Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::release_external failed! Solving has already started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::release_external failed! No control object.".to_string(),
+            )),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError(
+                "Solver::release_external failed! Solving has already started.".to_string(),
+            )),
             Solver::Control(ctl) => ctl.release_external(symbol),
         }
     }
     pub fn statistics(&mut self) -> Result<StatisticsResult, ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::statistics failed! No control object.",
-            }),
-            Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::statistics failed! Solving has already started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::statistics failed! No control object.".to_string(),
+            )),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError(
+                "Solver::statistics failed! Solving has already started.".to_string(),
+            )),
             Solver::Control(ctl) => {
                 let stats = ctl.statistics()?;
                 let root_key = stats.root()?;
@@ -581,12 +565,12 @@ impl Solver {
     }
     pub fn configuration(&mut self) -> Result<ConfigurationResult, ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::configuration failed! No control object.",
-            }),
-            Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::configuration failed! Solving has already started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::configuration failed! No control object.".to_string(),
+            )),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError(
+                "Solver::configuration failed! Solving has already started.".to_string(),
+            )),
             Solver::Control(ctl) => {
                 let conf = ctl.configuration()?;
                 let root_key = conf.root()?;
@@ -600,12 +584,12 @@ impl Solver {
         new_conf: &ConfigurationResult,
     ) -> Result<ConfigurationResult, ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::set_configuration failed! No control object.",
-            }),
-            Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::set_configuration failed! Solving has already started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::set_configuration failed! No control object.".to_string(),
+            )),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError(
+                "Solver::set_configuration failed! Solving has already started.".to_string(),
+            )),
             Solver::Control(ctl) => {
                 let conf = ctl.configuration_mut()?;
                 let root_key = conf.root()?;
@@ -620,12 +604,12 @@ impl Solver {
         assumptions: &[(clingo::Symbol, bool)],
     ) -> Result<(), ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::solve_with_assumptions failed! No control object.",
-            }),
-            Solver::SolveHandle(_) => Err(ServerError::InternalError {
-                msg: "Solver::solve_with_assumptions failed! Solving has already started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::solve_with_assumptions failed! No control object.".to_string(),
+            )),
+            Solver::SolveHandle(_) => Err(ServerError::InternalError(
+                "Solver::solve_with_assumptions failed! Solving has already started.".to_string(),
+            )),
             Solver::Control(ctl) => {
                 // get the program literal corresponding to the external atom
                 let atoms = ctl.symbolic_atoms()?;
@@ -640,10 +624,10 @@ impl Solver {
                         }
                         assumption_literals.push(lit)
                     } else {
-                        return Err(ServerError::InternalError {
-                            msg: "Solver::solve_with_assumptions failed! \
-                                  The assumptions contain a literal that is not defined in the logic program.",
-                        });
+                        return Err(ServerError::InternalError (
+                            "Solver::solve_with_assumptions failed! \
+                            The assumptions contain a literal that is not defined in the logic program.".to_string()
+                        ));
                     }
                 }
                 self.solve(SolveMode::ASYNC | SolveMode::YIELD, &assumption_literals)
@@ -652,12 +636,12 @@ impl Solver {
     }
     pub fn model(&mut self) -> Result<ModelResult, ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::model failed! No SolveHandle.",
-            }),
-            Solver::Control(_) => Err(ServerError::InternalError {
-                msg: "Solver::model failed! Solving has not yet started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::model failed! No SolveHandle.".to_string(),
+            )),
+            Solver::Control(_) => Err(ServerError::InternalError(
+                "Solver::model failed! Solving has not yet started.".to_string(),
+            )),
             Solver::SolveHandle(SolveHandleWrapper::DLTheory(handle, dl_theory)) => {
                 if handle.wait(0.0) {
                     match handle.model_mut() {
@@ -684,7 +668,6 @@ impl Solver {
                 if handle.wait(0.0) {
                     match handle.model_mut() {
                         Ok(Some(model)) => {
-                            // dl_theory.on_model(model);
                             let mut buf = vec![];
                             write_model(model, &mut buf)?;
                             // TODO rewrite write_dl_theory_assignment to use boxed iterator
@@ -721,12 +704,12 @@ impl Solver {
     }
     pub fn resume(&mut self) -> Result<(), ServerError> {
         match self {
-            Solver::None => Err(ServerError::InternalError {
-                msg: "Solver::resume failed! No SolveHandle.",
-            }),
-            Solver::Control(_) => Err(ServerError::InternalError {
-                msg: "Solver::resume failed! Solver has not yet started.",
-            }),
+            Solver::None => Err(ServerError::InternalError(
+                "Solver::resume failed! No SolveHandle.".to_string(),
+            )),
+            Solver::Control(_) => Err(ServerError::InternalError(
+                "Solver::resume failed! Solver has not yet started.".to_string(),
+            )),
             Solver::SolveHandle(SolveHandleWrapper::DLTheory(handle, _)) => {
                 handle.resume()?;
                 Ok(())
