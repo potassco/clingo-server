@@ -1,8 +1,8 @@
 use clingcon_plugin::ConTheory;
 use clingo::{
-    ast, control, ClingoError, Configuration, ConfigurationType, Control, Id, Literal, Model, Part,
-    ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode, Statistics, StatisticsType,
-    Symbol, SymbolicAtoms, TruthValue,
+    ast, control, ClingoError, Configuration, ConfigurationType, Control, Id, Model, Part,
+    ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode, SolverLiteral, Statistics,
+    StatisticsType, Symbol, SymbolicAtoms, TruthValue,
 };
 use clingo_dl_plugin::DLTheory;
 type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
@@ -17,6 +17,7 @@ use std::fmt::Debug;
 use std::io;
 use std::io::Read;
 use std::rc::Rc;
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -413,7 +414,11 @@ impl Solver {
         };
         Ok(())
     }
-    pub fn solve(&mut self, mode: SolveMode, assumptions: &[Literal]) -> Result<(), ServerError> {
+    pub fn solve(
+        &mut self,
+        mode: SolveMode,
+        assumptions: &[SolverLiteral],
+    ) -> Result<(), ServerError> {
         let x = self.take();
         match x {
             Solver::None => {
@@ -643,7 +648,7 @@ impl Solver {
                 "Solver::model failed! Solving has not yet started.".to_string(),
             )),
             Solver::SolveHandle(SolveHandleWrapper::DLTheory(handle, dl_theory)) => {
-                if handle.wait(0.0) {
+                if handle.wait(Duration::ZERO) {
                     match handle.model_mut() {
                         Ok(Some(model)) => {
                             // dl_theory.on_model(model);
@@ -665,7 +670,7 @@ impl Solver {
                 }
             }
             Solver::SolveHandle(SolveHandleWrapper::ConTheory(handle, con_theory)) => {
-                if handle.wait(0.0) {
+                if handle.wait(Duration::ZERO) {
                     match handle.model_mut() {
                         Ok(Some(model)) => {
                             let mut buf = vec![];
@@ -686,7 +691,7 @@ impl Solver {
                 }
             }
             Solver::SolveHandle(SolveHandleWrapper::NoTheory(handle)) => {
-                if handle.wait(0.0) {
+                if handle.wait(Duration::ZERO) {
                     match handle.model_mut() {
                         Ok(Some(model)) => {
                             let mut buf = vec![];
