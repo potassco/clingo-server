@@ -2,17 +2,20 @@
 
 ## Creating a solver
 
-Method: `GET` 
+Method: `GET`
 
 ```url
 curl http://localhost:8000/create
 ```
-### Responses
 
-Status: 200 OK 
-```
+**Responses:**
+
+Status: 200 OK
+
+```txt
 Created clingo solver.
 ```
+
 ```json
 {
     "type": "InternalError",
@@ -22,16 +25,17 @@ Created clingo solver.
 
 ## Register a (DL) theory
 
-Method: `GET` 
+Method: `GET`
 
 ```url
 curl http://localhost:8000/register_dl_theory
 ```
-### Responses
 
-Status: 200 OK 
+**Responses:**
 
-```
+Status: 200 OK
+
+```txt
 Difference logic theory registered.
 ```
 
@@ -41,6 +45,7 @@ Difference logic theory registered.
     "msg": "Solver::register_dl_theory failed! DLTheory already registered."
 }
 ```
+
 ```json
 {
     "type": "InternalError",
@@ -50,16 +55,17 @@ Difference logic theory registered.
 
 ## Add a logic program
 
-Method: `POST` 
+Method: `POST`
 
 ```url
 curl -i -XPOST http://localhost:8000/add --header 'content-type:text/plain' --data 'p:-not q. q :- not p.'
 ```
-### Responses
 
-Status: 200 OK 
+**Responses:**
 
-```
+Status: 200 OK
+
+```txt
 Added data to Solver.
 ```
 
@@ -69,6 +75,7 @@ Added data to Solver.
     "msg": "Solver::add failed! No control object."
 }
 ```
+
 ```json
 {
     "type": "InternalError",
@@ -82,18 +89,20 @@ Added data to Solver.
     "msg": "InternalError: Call to clingo_control_add() failed, code: Runtime, last: too many messages."
 }
 ```
+
 ## Grounding
 
-Method: `GET` 
+Method: `GET`
 
 ```url
 curl http://localhost:8000/ground
 ```
-### Responses
 
-Status: 200 OK 
+**Responses:**
 
-```
+Status: 200 OK
+
+```txt
 Grounding.
 ```
 
@@ -104,19 +113,19 @@ Grounding.
 }
 ```
 
-
 ## Solving
 
-Method: `GET` 
+Method: `GET`
 
 ```url
 curl http://localhost:8000/solve
 ```
-### Responses
 
-Status: 200 OK 
+**Responses:**
 
-```
+Status: 200 OK
+
+```txt
 Solving.
 ```
 
@@ -129,17 +138,17 @@ Solving.
 
 ## Poll models
 
-Method: `GET` 
+Method: `GET`
 
 ```url
 curl http://localhost:8000/model
 ```
 
-### Responses
+**Responses:**
 
-Status: 200 OK 
+Status: 200 OK
 
-```
+```txt
 Running.
 ```
 
@@ -147,7 +156,7 @@ Running.
 {"Model":[113,10]}
 ```
 
-```
+```txt
 Done
 ```
 
@@ -160,16 +169,17 @@ Done
 
 ## Resume solving
 
-Method: `GET` 
+Method: `GET`
 
 ```url
 curl http://localhost:8000/resume
 ```
-### Responses
 
-Status: 200 OK 
+**Responses:**
 
-```
+Status: 200 OK
+
+```txt
 Search is resumed.
 ```
 
@@ -182,16 +192,17 @@ Search is resumed.
 
 ## Finish search
 
-Method: `GET` 
+Method: `GET`
 
 ```url
 curl http://localhost:8000/close
 ```
-### Responses
 
-Status: 200 OK 
+**Responses:**
 
-```
+Status: 200 OK
+
+```txt
 Solve handle closed.
 ```
 

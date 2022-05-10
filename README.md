@@ -45,5 +45,4 @@ or with clingcon constraints
 python client.py -i golomb.lp --theory-con
 ```
 
-
 [API documentation](API.md)
