@@ -1,10 +1,11 @@
 import argparse
-import sys
 import io
+import json
+import sys
 import time
 import traceback
+
 import requests
-import json
 
 server = 'http://localhost:8000/'
 conf_fail = '{\
