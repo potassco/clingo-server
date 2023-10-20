@@ -20,6 +20,64 @@ use std::rc::Rc;
 use std::time::Duration;
 use thiserror::Error;
 
+use okapi::openapi3::Responses;
+use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::response::OpenApiResponderInner;
+
+use schemars::JsonSchema;
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub enum ErrorResponse {
+    ClingoError(String),
+    IOError(String),
+    InternalError(String),
+}
+impl From<ServerError> for ErrorResponse {
+    fn from(server_error: ServerError) -> Self {
+        match server_error {
+            ServerError::ClingoError(e) => ErrorResponse::ClingoError(format!("{}", e)),
+            ServerError::IOError(e) => ErrorResponse::IOError(format!("{}", e)),
+            ServerError::InternalError (msg) => ErrorResponse::InternalError(msg),
+        }
+    }
+}
+impl From<std::io::Error> for ErrorResponse {
+    fn from(error: std::io::Error) -> Self {
+        ErrorResponse::IOError(format!("{}", error))
+    }
+}
+impl<'r> Responder<'r, 'static> for ErrorResponse {
+    fn respond_to(self, request: &'r Request<'_>) -> response::Result<'static> {
+        let json = Json(self);
+        json.respond_to(request)
+    }
+}
+impl OpenApiResponderInner for ErrorResponse {
+    fn responses(gen: &mut OpenApiGenerator) -> rocket_okapi::Result<Responses> {
+        let mut responses = Responses::default();
+        let schema = gen.json_schema::<String>();
+        responses
+            .responses
+            .entry("500".to_owned())
+            .or_insert_with(|| {
+                let mut response = okapi::openapi3::Response::default();
+                response.description = format!(
+                    "\
+                # [500 Internal Server Error]\
+                (https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500)\n\
+                This response is given when the server has an internal error that it could not \
+                recover from.\n\n\
+                If you get this response please report this as an [issue here]\
+                ({}).\
+                ",
+                    "...some link..."
+                );
+                response.into()
+            });
+        Ok(responses)
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum ServerError {
     #[error("ClingoError: ")]
@@ -63,7 +121,7 @@ impl From<libloading::Error> for ServerError {
         ServerError::InternalError(format!("{}", e))
     }
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub enum ModelResult {
     Running,
     Model(Vec<u8>),
@@ -72,7 +130,7 @@ pub enum ModelResult {
 
 use serde::ser::SerializeMap;
 use serde::ser::SerializeSeq;
-#[derive(Debug)]
+#[derive(Debug, JsonSchema)]
 pub enum StatisticsResult {
     Value(f64),
     Array(Vec<StatisticsResult>),
@@ -105,7 +163,7 @@ impl Serialize for StatisticsResult {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, JsonSchema)]
 pub enum ConfigurationResult {
     Value(String),
     Array(Vec<ConfigurationResult>),
