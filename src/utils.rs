@@ -1,12 +1,12 @@
 use clingcon_plugin::ConTheory;
 use clingo::{
-    ast, control, ClingoError, Configuration, ConfigurationType, Control, Id, Model, Part,
-    ShowType, SolveHandle, SolveHandleWithEventHandler, SolveMode, SolverLiteral, Statistics,
-    StatisticsType, Symbol, SymbolicAtoms, TruthValue,
+    ast, control, ClingoError, Configuration, ConfigurationType, Control, DefaultCtx,
+    GenericSolveHandle, Id, Model, Part, ShowType, SolveHandle, SolveMode, SolverLiteral,
+    Statistics, StatisticsType, Symbol, SymbolicAtoms, TruthValue,
 };
 use clingo_dl_plugin::DLTheory;
-type DLSolveHandle = SolveHandleWithEventHandler<DLEventHandler>;
-type ConSolveHandle = SolveHandleWithEventHandler<ConEventHandler>;
+type DLSolveHandle = GenericSolveHandle<DefaultCtx, DLEventHandler>;
+type ConSolveHandle = GenericSolveHandle<DefaultCtx, ConEventHandler>;
 use clingo::theory::Theory;
 use rocket::response::{self, Responder};
 use rocket::serde::json::Json;
