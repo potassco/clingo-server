@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate rocket;
 #[macro_use]
+extern crate rocket_okapi;
+#[macro_use]
 extern crate serde_derive;
 
 mod convert;
@@ -17,9 +19,22 @@ use rocket::{Data, State};
 use std::sync::Arc;
 use utils::{ConfigurationResult, ModelResult, RequestId, ServerError, Solver, StatisticsResult};
 
+use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
+
 #[cfg(test)]
 mod test;
 
+fn get_docs() -> SwaggerUIConfig {
+    use rocket_okapi::swagger_ui::UrlObject;
+
+    SwaggerUIConfig {
+        url: "/my_resource/openapi.json".to_string(),
+        urls: vec![UrlObject::new("My Resource", "/v1/company/openapi.json")],
+        ..Default::default()
+    }
+}
+
+#[openapi]
 #[get("/")]
 fn index(id: &RequestId) -> String {
     format!("This is request #{}.", id.0)
@@ -174,25 +189,28 @@ async fn set_configuration(
 #[launch]
 fn rocket() -> _ {
     let state: Arc<Mutex<Solver>> = Arc::new(Mutex::new(Solver::None));
-    rocket::build().manage(state).mount(
-        "/",
-        routes![
-            index,
-            create,
-            add,
-            ground,
-            assign_external,
-            release_external,
-            solve,
-            model,
-            resume,
-            close,
-            statistics,
-            configuration,
-            set_configuration,
-            solve_with_assumptions,
-            register_dl_theory,
-            register_con_theory
-        ],
-    )
+    rocket::build()
+        .manage(state)
+        .mount(
+            "/",
+            routes![
+                index,
+                create,
+                add,
+                ground,
+                assign_external,
+                release_external,
+                solve,
+                model,
+                resume,
+                close,
+                statistics,
+                configuration,
+                set_configuration,
+                solve_with_assumptions,
+                register_dl_theory,
+                register_con_theory
+            ],
+        )
+        .mount("/swagger", make_swagger_ui(&get_docs()))
 }
