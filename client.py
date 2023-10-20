@@ -100,8 +100,8 @@ def main():
         )
         args = parser.parse_args()
 
-        response = requests.get(server)
-        print(response.text)
+        # response = requests.get(server)
+        # print(response.text)
 
         # create solver
         response = requests.get(server + "create")
@@ -134,7 +134,7 @@ def main():
             response = requests.post(
                 server + "set_configuration",
                 data=io.StringIO(conf).read(),
-                headers={"Content-Type": "application/json; charset=utf-8 "},
+                headers={"Content-Type": "application/octet; charset=utf-8 "},
             )
             print(response.text)
 
@@ -152,7 +152,7 @@ def main():
         response = requests.post(
             server + "ground",
             data=io.StringIO(part).read(),
-            headers={"Content-Type": "application/json; charset=utf-8 "},
+            headers={"Content-Type": "application/octet; charset=utf-8 "},
         )
         print(response.text)
 
@@ -163,7 +163,7 @@ def main():
             response = requests.post(
                 server + "assign_external",
                 data=io.StringIO(assignment).read(),
-                headers={"Content-Type": "application/json; charset=utf-8 "},
+                headers={"Content-Type": "application/octet; charset=utf-8 "},
             )
             print(response.text)
 
@@ -175,7 +175,7 @@ def main():
         response = requests.post(
             server + "solve_with_assumptions",
             data=io.StringIO(assumptions).read(),
-            headers={"Content-Type": "application/json; charset=utf-8 "},
+            headers={"Content-Type": "application/octet; charset=utf-8 "},
         )
         print(response.text)
         poll_models()
@@ -187,7 +187,7 @@ def main():
             response = requests.post(
                 server + "release_external",
                 data=io.StringIO(atom).read(),
-                headers={"Content-Type": "application/json; charset=utf-8 "},
+                headers={"Content-Type": "application/octet; charset=utf-8 "},
             )
             print(response.text)
 

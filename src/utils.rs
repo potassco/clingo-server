@@ -20,9 +20,13 @@ use std::rc::Rc;
 use std::time::Duration;
 use thiserror::Error;
 
-use okapi::openapi3::Responses;
 use rocket_okapi::gen::OpenApiGenerator;
+use rocket_okapi::okapi::openapi3::Responses;
+
+use rocket_okapi::okapi::schemars::{self, Map};
+
 use rocket_okapi::response::OpenApiResponderInner;
+use rocket_okapi::OpenApiError;
 
 use schemars::JsonSchema;
 
@@ -37,7 +41,7 @@ impl From<ServerError> for ErrorResponse {
         match server_error {
             ServerError::ClingoError(e) => ErrorResponse::ClingoError(format!("{}", e)),
             ServerError::IOError(e) => ErrorResponse::IOError(format!("{}", e)),
-            ServerError::InternalError (msg) => ErrorResponse::InternalError(msg),
+            ServerError::InternalError(msg) => ErrorResponse::InternalError(msg),
         }
     }
 }
@@ -53,28 +57,56 @@ impl<'r> Responder<'r, 'static> for ErrorResponse {
     }
 }
 impl OpenApiResponderInner for ErrorResponse {
-    fn responses(gen: &mut OpenApiGenerator) -> rocket_okapi::Result<Responses> {
-        let mut responses = Responses::default();
-        let schema = gen.json_schema::<String>();
-        responses
-            .responses
-            .entry("500".to_owned())
-            .or_insert_with(|| {
-                let mut response = okapi::openapi3::Response::default();
-                response.description = format!(
-                    "\
-                # [500 Internal Server Error]\
-                (https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500)\n\
-                This response is given when the server has an internal error that it could not \
-                recover from.\n\n\
-                If you get this response please report this as an [issue here]\
-                ({}).\
-                ",
-                    "...some link..."
-                );
-                response.into()
-            });
-        Ok(responses)
+    fn responses(_generator: &mut OpenApiGenerator) -> Result<Responses, OpenApiError> {
+        use rocket_okapi::okapi::openapi3::{RefOr, Response as OpenApiReponse};
+
+        let mut responses = Map::new();
+        responses.insert(
+            "400".to_string(),
+            RefOr::Object(OpenApiReponse {
+                description: "\
+                # [400 Bad Request](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400)\n\
+                The request given is wrongly formatted or data asked could not be fulfilled. \
+                "
+                .to_string(),
+                ..Default::default()
+            }),
+        );
+        responses.insert(
+            "404".to_string(),
+            RefOr::Object(OpenApiReponse {
+                description: "\
+                # [404 Not Found](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404)\n\
+                This response is given when you request a page that does not exists.\
+                "
+                .to_string(),
+                ..Default::default()
+            }),
+        );
+        responses.insert(
+            "422".to_string(),
+            RefOr::Object(OpenApiReponse {
+                description: "\
+                # [422 Unprocessable Entity](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422)\n\
+                This response is given when you request body is not correctly formatted. \
+                ".to_string(),
+                ..Default::default()
+            }),
+        );
+        responses.insert(
+            "500".to_string(),
+            RefOr::Object(OpenApiReponse {
+                description: "\
+                # [500 Internal Server Error](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500)\n\
+                This response is given when something wend wrong on the server. \
+                ".to_string(),
+                ..Default::default()
+            }),
+        );
+        Ok(Responses {
+            responses,
+            ..Default::default()
+        })
     }
 }
 

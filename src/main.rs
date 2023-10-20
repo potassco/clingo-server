@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate rocket;
-#[macro_use]
 extern crate rocket_okapi;
 #[macro_use]
 extern crate serde_derive;
@@ -16,8 +15,9 @@ use parking_lot::Mutex;
 use rocket::data::ToByteUnit;
 use rocket::serde::json::Json;
 use rocket::{Data, State};
+use rocket_okapi::{openapi, openapi_get_routes};
 use std::sync::Arc;
-use utils::{ConfigurationResult, ErrorResponse, ModelResult, RequestId, Solver, StatisticsResult};
+use utils::{ConfigurationResult, ErrorResponse, ModelResult, Solver, StatisticsResult};
 
 use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
 
@@ -25,7 +25,7 @@ use rocket_okapi::swagger_ui::{make_swagger_ui, SwaggerUIConfig};
 mod test;
 
 fn get_docs() -> SwaggerUIConfig {
-    use rocket_okapi::swagger_ui::UrlObject;
+    use rocket_okapi::settings::UrlObject;
 
     SwaggerUIConfig {
         url: "/my_resource/openapi.json".to_string(),
@@ -34,11 +34,11 @@ fn get_docs() -> SwaggerUIConfig {
     }
 }
 
-#[openapi]
-#[get("/")]
-fn index(id: &RequestId) -> String {
-    format!("This is request #{}.", id.0)
-}
+// #[openapi]
+// #[get("/")]
+// fn index(id: RequestId) -> String {
+//     format!("This is request #{}.", id.0)
+// }
 #[openapi]
 #[get("/create")]
 fn create(state: &State<Arc<Mutex<Solver>>>) -> Result<String, ErrorResponse> {
@@ -56,7 +56,8 @@ async fn add(state: &State<Arc<Mutex<Solver>>>, data: Data<'_>) -> Result<String
     Ok("Added data to Solver.".to_string())
 }
 #[openapi]
-#[post("/ground", format = "application/json", data = "<data>")]
+#[post("/ground", data = "<data>")]
+// #[post("/ground", format = "application/json", data = "<parts>")]
 async fn ground(
     state: &State<Arc<Mutex<Solver>>>,
     data: Data<'_>,
@@ -73,7 +74,7 @@ async fn ground(
     Ok("Grounding.".to_string())
 }
 #[openapi]
-#[post("/assign_external", format = "application/json", data = "<data>")]
+#[post("/assign_external", data = "<data>")]
 async fn assign_external(
     state: &State<Arc<Mutex<Solver>>>,
     data: Data<'_>,
@@ -89,7 +90,7 @@ async fn assign_external(
     Ok("External assigned.".to_string())
 }
 #[openapi]
-#[post("/release_external", format = "application/json", data = "<data>")]
+#[post("/release_external", data = "<data>")]
 async fn release_external(
     state: &State<Arc<Mutex<Solver>>>,
     data: Data<'_>,
@@ -112,11 +113,7 @@ fn solve(state: &State<Arc<Mutex<Solver>>>) -> Result<String, ErrorResponse> {
     Ok("Solving.".to_string())
 }
 #[openapi]
-#[post(
-    "/solve_with_assumptions",
-    format = "application/json",
-    data = "<data>"
-)]
+#[post("/solve_with_assumptions", data = "<data>")]
 async fn solve_with_assumptions(
     state: &State<Arc<Mutex<Solver>>>,
     data: Data<'_>,
@@ -189,7 +186,7 @@ fn configuration(
     }
 }
 #[openapi]
-#[post("/set_configuration", format = "application/json", data = "<data>")]
+#[post("/set_configuration", data = "<data>")]
 async fn set_configuration(
     state: &State<Arc<Mutex<Solver>>>,
     data: Data<'_>,
@@ -218,8 +215,8 @@ fn rocket() -> _ {
         // )
         .mount(
             "/",
-            routes_with_openapi![
-                index,
+            openapi_get_routes![
+                // index,
                 create,
                 add,
                 ground,
