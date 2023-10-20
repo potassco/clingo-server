@@ -10,7 +10,7 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ 3.9 }}
       - name: Conda install clingo
         shell: bash -l {0}
         run: |
