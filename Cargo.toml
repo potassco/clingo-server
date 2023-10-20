@@ -10,11 +10,6 @@ clingo = "=0.8.0"
 clingo-dl-plugin = { git = "https://github.com/potassco/clingo-dl-theory-rs", branch = "master" }
 clingcon-plugin = { git = "https://github.com/potassco/clingcon-theory-rs", branch = "master" }
 
-# rocket_okapi = { version = "0.8.0-rc.1", features = ["swagger"]}
-rocket_okapi = { git = "https://github.com/GREsau/okapi.git", branch = "master" ,features = ["swagger"]}
-
-schemars = "0.8"
-
 rocket = { version = "0.5.0-rc.2", default-features = false, features = ["json"] }
 parking_lot = "0.12"
 thiserror = "1.0"
@@ -22,3 +17,6 @@ libloading = "0.8"
 serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"
+
+rocket_okapi = { version = "0.8.0-rc.2", features = ["swagger"]}
+schemars = "0.8"
